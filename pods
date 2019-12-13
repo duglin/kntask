@@ -1,0 +1,152 @@
+#!/bin/bash
+
+# This tool is a variant of `kubectl get pods` and `kubectl get ksvc`.
+# It executes both commands but only shows the entries of interest during
+# a live demo. For example, it doesn't show Terminating pods.
+
+set -e
+
+once=""
+# noclear=""
+untilcmd=""
+grepcmd=""
+timeout=0
+
+start=$(date "+%s")
+
+while [[ "$1" == "--"* ]]; do
+    case "$1" in
+    # --noclear) noclear="1" ;;
+    --once)  once="1" ;;
+    --until)  untilcmd="$2" ; shift ;;
+    --grep)  grepcmd="$2" ; shift ;;
+	--timeout)  timeout="$2" ; shift ;;
+    *) echo "Uknown option '$1'" ; exit 1 ;;
+    esac
+    shift
+done
+
+if (( timeout != 0 )); then
+    (( timeout = start + timeout ))
+fi
+
+# if [[ -z "${noclear}" ]]; then
+    # clear
+# fi
+
+CLUSTER=${1:-${KUBECONFIG##*-}}
+CLUSTER=${CLUSTER%.yml}
+TMPFILE=/tmp/pods-tmp${RANDOM}
+
+function finish {
+  rm -f "${TMPFILE}"
+  rm -f "${TMPFILE}.out"
+}
+trap finish EXIT
+
+oldSize=0
+
+if ! [[ "${KUBECONFIG}" == *"${CLUSTER}".yml ]]; then
+  bx config --check-version false
+  $(bx ks cluster-config -s --export ${CLUSTER})
+fi
+
+DOMAIN=$(bx ks cluster get ${CLUSTER} | grep "Subdomain" | sed "s/^.*: *\([^ ]*]*\).*$/\1/")
+
+CIURL="ci-default.${DOMAIN}"
+LOGGERURL="logger-default.${DOMAIN}"
+
+while true ; do
+	if (( timeout != 0 )) ; then
+		now=$(date "+%s")
+		if (( now > timeout )); then
+		    break
+	    fi
+	fi
+
+	(
+
+    # printf "Cluster: %-40s                   $(date "+%r")\\n" "${CLUSTER}"
+    printf "Cluster: ${CLUSTER}    Domain: ${DOMAIN}\\n"
+
+	echo
+
+    kubectl get ksvc --all-namespaces --no-headers < /dev/null > $TMPFILE.out 2>&1
+    IKS=$'\r\n' eval 'NSs=($(grep -v NAME $TMPFILE.out | sed "s/ .*//" | sort -u))'
+
+    printf "%-30s %-30s %-5s\033[K\\n" KnSERVICE LATESTREADY READY
+    cat $TMPFILE.out | while read ns name domain latestc latestr ready reason
+    do
+        [[ "${ns}" == "No" ]] && continue
+
+        # Shorten 'default' namespaced names
+        if [[ "${ns}" == "default" ]]; then
+          ns=""
+        else
+          ns="${ns}/"
+        fi
+
+        printf "%-30s %-30s %-5s\033[K\\n" "${ns}${name}" "${latestr}" "${ready}"
+    done
+
+    printf "\033[K\\n"
+    read -s -n 1 -t 0.01 ch || true
+    if ! [[ "$ch" == "" ]]; then
+        break
+    fi
+
+    printf "%-55s %-15s  %s\033[K\\n" POD      STATUS AGE
+    for ns in "${NSs[@]}"
+    do
+        kubectl get pods -n $ns --no-headers < /dev/null 2>&1 | while read name ready status restarts age
+        do
+            [[ "${name}" == "No" ]] && continue
+            [[ "${status}" == "Completed" ]] && continue
+            [[ "${status}" == "Terminating" ]] && continue
+
+            printf "%-55s %-15s  %s\033[K\\n" "${name}" "${status}" "${age}"
+        done
+    done
+    ! [[ "${PIPESTATUS[0]}" == "0" ]] && exit 1
+
+	) | while read line ; do
+		printf -- "${line}\033[K\\n"
+	done > $TMPFILE
+
+    # printf "\033[K\\n" >> $TMPFILE   # Blank line
+
+    if [[ "$oldSize" != "0" ]]; then
+        printf "\033[%dA" "${oldSize}"
+    fi
+    newSize=$(wc -l "${TMPFILE}" | sed "s/ .*//")
+    while (( oldSize > newSize )); do
+        printf "\033[K\\n" >> $TMPFILE
+        let oldSize=oldSize-1
+    done
+    cat $TMPFILE
+    oldSize=$(wc -l "${TMPFILE}" | sed "s/ .*//")
+    # rm -f $TMPFILE $TMPFILE.out
+
+    if [[ -n "${once}" ]]; then
+       break
+    fi
+
+    if [[ -n "${grepcmd}" ]]; then
+        set +e
+        grep "${grepcmd}" $TMPFILE > /dev/null 2>&1 && break
+        set -e
+    fi
+
+    if [[ -n "$untilcmd" ]]; then
+        set +e
+        bash -c " ${untilcmd} " >/dev/null 2>&1 && break
+        set -e
+    fi
+
+    read -s -n 1 -t 1 ch || true
+    if ! [[ "$ch" == "" ]]; then
+        break
+    fi
+
+done
+

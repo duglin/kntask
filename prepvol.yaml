@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: taskmgrpvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 50M
+  storageClassName: ibmc-file-bronze
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: taskmgr
+spec:
+  restartPolicy: Never
+  containers:
+  - name: taskmgr
+    image: duglin/taskmgr
+    imagePullPolicy: Always
+    command: [ "cp" ]
+    args: [ "/taskmgr", "/vol/taskmgr" ]
+    volumeMounts:
+    - name: taskmgr
+      mountPath: /vol
+  volumes:
+  - name: taskmgr
+    persistentVolumeClaim:
+      claimName: taskmgrpvc

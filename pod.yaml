@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test
+spec:
+  containers:
+  - name: mypp
+    image: duglin/app
+    imagePullPolicy: IfNotPresent
+    command: [ "/vol/taskmgr" ]
+    volumeMounts:
+    - name: taskmgr
+      mountPath: /vol
+  volumes:
+  - name: taskmgr
+    persistentVolumeClaim:
+      claimName: taskmgrpvc
