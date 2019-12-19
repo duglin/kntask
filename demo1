@@ -12,9 +12,9 @@ function klog() {
 
 set -e
 
-kn job status job1 > /dev/null 2>&1
-kn job status job2 > /dev/null 2>&1
-kn service delete test > /dev/null 2>&1
+kn job status job1 > /dev/null 2>&1 || true
+kn job status job2 > /dev/null 2>&1 || true
+kn service delete test > /dev/null 2>&1 || true
 
 comment "Our app:"
 doit cat app
@@ -42,11 +42,17 @@ comment "Force our task to scale"
 doit kn service update test --concurrency-limit=1
 comment "Run batch job 50 times, retry 10 times, but 10 at the same time"
 comment "Should force our task to scale, but only to about 10"
-doit kn job create job3 --task=test --num=50 --retry=10 --concurrency=10
+doit kn job create job3 --task=test --num=50 --retry=10 --parallel=10
 doit time kn job wait job3
 doit kubectl get pods \| grep -e -2-
 
 doit kn service update test --concurrency-limit=4
-doit kn job create job3 --task=test --num=50 --retry=10 --concurrency=10
+doit kn job create job3 --task=test --num=50 --retry=10 --parallel=10
 doit time kn job wait job3
 doit kubectl get pods \| grep -e -3-
+
+doit kn job create job4 --task=test --env=foo=bar --env=bar=foo -- arg1 arg2
+doit kn job wait job4
+doit --noexec klog test
+kubectl logs --tail=-1 -l serving.knative.dev/service=test -c user-container |
+ sed -n 'H; /Output:/h; ${g;p;}'

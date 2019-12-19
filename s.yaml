@@ -2,12 +2,17 @@ apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
   name: test
+  labels:
+    type: task
 spec:
   template:
     metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "1"
       labels:
         type: task
     spec:
+      containerConcurrency: 1
       containers:
       - image: duglin/app
         imagePullPolicy: Always

@@ -9,14 +9,6 @@ https://cloud.ibm.com/docs/containers?topic=containers-storage_planning#choose_s
 https://docs.microsoft.com/en-us/azure/batch/tutorial-rendering-cli
 https://ibm.ent.box.com/notes/573702339552
 
-controller->pod
-- INDEX
-- JOB ID
-
-pod->controller
-- ping: JOB_ID, list of outstanding INDEXes
-- done: JOB_ID, list of INDEXes
-
 controller (just PoC)
 - start job
 - query status of job

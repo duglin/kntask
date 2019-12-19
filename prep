@@ -1,3 +1,4 @@
+kubectl delete pod/taskmgr > /dev/null 2>&1 && sleep 1
 kubectl apply -f prepvol.yaml
 while ! kubectl get pods | grep taskmgr.*Completed > /dev/null ; do
   sleep 1

@@ -1,4 +1,4 @@
-all: .taskmgr .app .jobcontroller load
+all: .taskmgr .app .jobcontroller load kn-job
 
 taskmgr: taskmgr.go
 	GO_EXTLINK_ENABLED=0 CGO_ENABLED=0 go build \
@@ -26,13 +26,20 @@ taskmgr: taskmgr.go
 run: .app
 	docker run -ti -p 8080:8080 duglin/app
 
-deploy: .jobcontroller .taskmgr
-	kn service delete jobcontroller > /dev/null 2>&1 && sleep 1
+deploy: .jobcontroller .taskmgr .app
+	kn service delete test jobcontroller > /dev/null 2>&1 || true
+	sleep 2
 	kn service create jobcontroller --image duglin/jobcontroller --min-scale=1
 	./prep
+	kubectl create -f s.yaml > /dev/null 2>&1
 
 load: load.go
 	go build -o load load.go
+	GOOS=darwin GOARCH=amd64 go build -o load.mac load.go
+
+kn-job: kn-job.go
+	go build -o kn-job kn-job.go
+	GOOS=darwin GOARCH=amd64 go build -o kn-job.mac kn-job.go
 
 clean:
-	rm -f jobcontroller load taskmgr
+	rm -f jobcontroller load load.mac taskmgr kn-job kn-job.mac load.mac

@@ -64,6 +64,10 @@ func generateLoad(index int, url string, dur time.Duration, wg *sync.WaitGroup) 
 		} else if resp.Body != nil {
 			out, _ := ioutil.ReadAll(resp.Body)
 			output = strings.TrimSpace(string(out))
+			if resp.StatusCode != 200 {
+				output = fmt.Sprintf("(%d) %s", resp.StatusCode, output)
+			}
+
 		}
 		if i := strings.IndexAny(output, "\n\r"); i >= 0 {
 			output = strings.TrimSpace(output[:i-1])

@@ -7,80 +7,217 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 )
 
 var restartTimeout = 10 * time.Second
 
-type Status struct {
-	Ping     time.Time `json:"-"`
+type Task struct {
+	Index    int
 	Start    time.Time
 	End      time.Time
 	Status   string // PASS, FAIL, RETRIES, ERROR:...
 	Attempts int    // Try number
+
+	mutex sync.Mutex
+	job   *Job
+	ping  time.Time `json:"-"` // Non-zero == it's running
+}
+
+func (t *Task) Run(isRestart bool) {
+	t.mutex.Lock()
+
+	t.ping = time.Now()
+	t.Start = t.ping
+	t.Status = ""
+	t.Attempts++
+	if !isRestart {
+		t.job.TaskStarted()
+	}
+
+	t.mutex.Unlock()
+
+	// TODO: just put curl into gofunc - not all of this
+	go func() {
+		log.Printf("Start task: %s/%d\n", t.job.ID, t.Index)
+
+		job := t.job
+		url := fmt.Sprintf("http://%s.default.svc.cluster.local?async",
+			job.TaskName)
+		req, err := http.NewRequest("GET", url, nil)
+		req.Header.Add("K_JOB_NAME", job.Name)
+		req.Header.Add("K_JOB_ID", job.ID)
+		req.Header.Add("K_JOB_INDEX", strconv.Itoa(t.Index))
+		req.Header.Add("K_JOB_ATTEMPT", strconv.Itoa(t.Attempts))
+
+		for _, env := range job.Envs {
+			req.Header.Add("K_ENV", env)
+		}
+
+		for i, arg := range job.Args {
+			req.Header.Add("K_ARG_"+strconv.Itoa(i+1), arg)
+		}
+
+		log.Printf("Calling do:%s\n", url)
+		res, err := (&http.Client{}).Do(req)
+
+		body := ""
+		if res != nil && res.Body != nil {
+			var buf = []byte{}
+			buf, _ = ioutil.ReadAll(res.Body)
+			body = string(buf)
+			res.Body.Close()
+		}
+		log.Printf("curl res(%d): %s\n", res.StatusCode, body)
+
+		if err != nil {
+			log.Printf("Curl res: %s\n", body)
+			t.Fail("Error talking to task: " + err.Error())
+		}
+	}()
+}
+
+func (t *Task) IsRunning() bool {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+
+	return !t.ping.IsZero()
+}
+
+func (t *Task) TouchPing() {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+
+	// Already done running, ignore rogue/late messages
+	if !t.End.IsZero() {
+		return
+	}
+
+	t.ping = time.Now()
+}
+
+func (t *Task) Pass() {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+
+	// Already done running, ignore rogue/late messages
+	if !t.End.IsZero() {
+		return
+	}
+
+	t.ping = time.Now()
+	t.End = t.ping
+	t.Status = "PASS"
+
+	t.job.TaskEnded(true)
+}
+
+func (t *Task) Fail(reason string) {
+	t.mutex.Lock()
+	// Can't defer the unlock due to the t.Run() below
+
+	// Already done running, ignore rogue/late messages
+	if !t.End.IsZero() {
+		t.mutex.Unlock()
+		return
+	}
+
+	if t.Attempts <= t.job.NumRetries {
+		t.mutex.Unlock()
+		t.Run(true)
+		return
+	}
+
+	// All retries have failed so give up
+	t.ping = time.Now()
+	t.End = t.ping
+	t.Status = "FAIL: " + reason
+
+	t.mutex.Unlock()
+
+	t.job.TaskEnded(false)
 }
 
 type Job struct {
-	Name        string
-	TaskName    string
-	NumJobs     int
-	Concurrency int
-	NumRetries  int
+	ID         string
+	Name       string
+	TaskName   string
+	NumJobs    int
+	Parallel   int
+	NumRetries int
+	Flavor     string
+	Envs       []string
+	Args       []string
 
-	ID           string
-	Tasks        []*Status
+	mutex        sync.Mutex
+	Start        time.Time
+	End          time.Time
 	NumRunning   int
 	NumCompleted int
 	NumPassed    int
+	Tasks        []*Task
 }
 
-var Jobs = map[string]*Job{}
+var Jobs = map[string]*Job{}         // ID->*Job
+var Name2JobID = map[string]string{} // JobName->JobID
+
+func (j *Job) TaskStarted() {
+	j.mutex.Lock()
+	defer j.mutex.Unlock()
+
+	j.NumRunning++
+}
+
+func (j *Job) TaskEnded(pass bool) {
+	j.mutex.Lock()
+	defer j.mutex.Unlock()
+
+	j.NumCompleted++
+	j.NumRunning--
+	if pass {
+		j.NumPassed++
+	}
+
+	if j.NumCompleted == j.NumJobs {
+		j.End = time.Now()
+	}
+}
 
 func Controller() {
 	for {
-		now := time.Now()
-		for jName, job := range Jobs {
+		for _, job := range Jobs {
 			if job.NumCompleted == job.NumJobs {
 				// All done so delete it
-				// delete(Jobs, jName)
+				// delete(Jobs, jID)
 			}
 
 			// Look for timed-out jobs
-			for tID, status := range job.Tasks {
+			now := time.Now()
+			for _, task := range job.Tasks {
 				// Skip jobs that are not running
-				if status.Ping.IsZero() {
+				if task.ping.IsZero() {
 					continue
 				}
 
-				if now.Sub(status.Ping) > restartTimeout {
-					log.Printf("Thinks it's still running\n")
-					if status.Attempts <= job.NumRetries {
-						// Retry
-						job.NumRunning--
-						StartTask(jName, tID)
-					} else {
-						// Retried-out
-						status.Ping = time.Time{}
-						status.End = time.Now()
-						status.Status = "RETRIES"
-						job.NumCompleted++
-						job.NumRunning--
-					}
+				if now.Sub(task.ping) > restartTimeout {
+					task.Fail("Ping timeout")
 				}
 			}
 
-			// Now if we have room, find one to run
-			if job.NumCompleted != job.NumJobs && job.NumRunning < job.Concurrency {
-				for tID, status := range job.Tasks {
+			// If we have room, find one to run
+			if job.NumCompleted != job.NumJobs && job.NumRunning < job.Parallel {
+				for _, task := range job.Tasks {
 					// Skip jobs that are done or running
-					if !status.Ping.IsZero() || status.Status != "" {
+					if !task.ping.IsZero() || !task.End.IsZero() {
 						continue
 					}
 
-					StartTask(jName, tID)
+					task.Run(false)
 
-					// Exit if we're at max concurrency
-					if job.NumRunning == job.Concurrency {
+					// Exit if we're at max concurrency/parallel
+					if job.NumRunning == job.Parallel {
 						break
 					}
 				}
@@ -89,27 +226,6 @@ func Controller() {
 		time.Sleep(100 * time.Millisecond)
 		// time.Sleep(5 * time.Second)
 	}
-}
-
-func StartTask(jName string, tID int) {
-	Jobs[jName].Tasks[tID].Ping = time.Now()
-	Jobs[jName].Tasks[tID].Start = time.Now()
-	Jobs[jName].Tasks[tID].Status = ""
-	Jobs[jName].Tasks[tID].Attempts++
-	Jobs[jName].NumRunning++
-
-	go func() {
-		log.Printf("Start task: %d\n", tID)
-		// _, err := curl(fmt.Sprintf("http://%s-default.kndev.us-south.containers.appdomain.cloud?KN_JOB_NAME=%s&KN_JOB_INDEX=%d", Jobs[jName].TaskName, jName, tID))
-		_, err := curl(fmt.Sprintf("http://%s.default.svc.cluster.local?KN_JOB_NAME=%s&KN_JOB_INDEX=%d", Jobs[jName].TaskName, jName, tID))
-
-		if err != nil {
-			Jobs[jName].Tasks[tID].Ping = time.Time{}
-			Jobs[jName].Tasks[tID].End = time.Now()
-			Jobs[jName].Tasks[tID].Status = "ERROR: " + err.Error()
-			Jobs[jName].NumRunning--
-		}
-	}()
 }
 
 func curl(url string) (string, error) {
@@ -132,14 +248,10 @@ func main() {
 		jobName := r.URL.Query().Get("job")
 		taskName := r.URL.Query().Get("task")
 		numJobs := r.URL.Query().Get("num")
-		concurrency := r.URL.Query().Get("concurrency")
+		parallel := r.URL.Query().Get("parallel")
 		retry := r.URL.Query().Get("retry")
-
-		if taskName == "" {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("Missing 'task'\n"))
-			return
-		}
+		flavor := r.URL.Query().Get("flavor")
+		envs := r.URL.Query()["env"]
 
 		var err error
 		id := fmt.Sprintf("%d", time.Now().UnixNano()) // fix
@@ -148,14 +260,51 @@ func main() {
 			jobName = id
 		}
 
-		job := Job{
-			Name:        jobName,
-			TaskName:    taskName,
-			NumJobs:     1,
-			Concurrency: 10,
-			NumRetries:  0,
+		if jobID, ok := Name2JobID[jobName]; ok {
+			// For now if it already exists then delete it and create
+			// a new one with the same name, if it's done! If it's running
+			// then stop them from killing it by returning an error
+			job := Jobs[jobID]
+			if job.NumCompleted != job.NumJobs {
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte("Job '" + jobName + "' already exists and is running\n"))
+				return
+			}
 
-			ID: id,
+			delete(Jobs, jobID)
+			delete(Name2JobID, jobName)
+		}
+
+		args := map[int]string{}
+		for name, values := range r.Header {
+			name = strings.ToUpper(name)
+			if strings.HasPrefix(name, "ARG_") {
+				i, err := strconv.Atoi(name[4:])
+				if err != nil {
+					w.WriteHeader(http.StatusBadRequest)
+					w.Write([]byte("Bad arg '" + name + "'\n"))
+				}
+				args[i] = values[0]
+			}
+		}
+
+		if taskName == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("Missing 'task'\n"))
+			return
+		}
+
+		job := Job{
+			Name:       jobName,
+			TaskName:   taskName,
+			NumJobs:    1,
+			Parallel:   10,
+			NumRetries: 0,
+			Flavor:     flavor,
+			Envs:       envs,
+
+			ID:    id,
+			Start: time.Now(),
 		}
 
 		if numJobs != "" {
@@ -171,15 +320,15 @@ func main() {
 			}
 		}
 
-		if concurrency != "" {
-			if job.Concurrency, err = strconv.Atoi(concurrency); err != nil {
+		if parallel != "" {
+			if job.Parallel, err = strconv.Atoi(parallel); err != nil {
 				w.WriteHeader(http.StatusBadRequest)
-				w.Write([]byte("Bad 'concurrency'\n" + err.Error()))
+				w.Write([]byte("Bad 'parallel'\n" + err.Error()))
 				return
 			}
-			if job.Concurrency < 0 {
+			if job.Parallel < 0 {
 				w.WriteHeader(http.StatusBadRequest)
-				w.Write([]byte("Invalid 'concurrency' value: " + concurrency + "\n"))
+				w.Write([]byte("Invalid 'parallel' value: " + parallel + "\n"))
 				return
 			}
 		}
@@ -198,89 +347,96 @@ func main() {
 			}
 		}
 
-		job.Tasks = make([]*Status, job.NumJobs)
+		job.Tasks = make([]*Task, job.NumJobs)
 		for i := range job.Tasks {
-			job.Tasks[i] = &Status{}
+			job.Tasks[i] = &Task{
+				Index: i,
+				job:   &job,
+			}
 		}
 
-		Jobs[job.Name] = &job
+		for i := 1; ; i++ {
+			value, ok := args[i]
+			if !ok {
+				break
+			}
+			job.Args = append(job.Args, value)
+		}
+
+		Jobs[job.ID] = &job
+		Name2JobID[job.Name] = job.ID
 
 		r.Header.Add("JOB-NAME", job.Name)
+		r.Header.Add("JOB-ID", job.ID)
 	})
 
 	http.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
 		jobName := r.URL.Query().Get("job")
+		jobID := ""
+
+		if jobName != "" {
+			if jobID = Name2JobID[jobName]; jobID == "" {
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte("Can't find job '" + jobName + "'\n"))
+				return
+			}
+		}
+
 		buf := []byte{}
-		if jobName == "" {
+		if jobID == "" {
 			buf, _ = json.MarshalIndent(Jobs, "", "  ")
 		} else {
-			job, ok := Jobs[jobName]
+			job, ok := Jobs[jobID]
 			if !ok {
 				w.WriteHeader(http.StatusBadRequest)
-				w.Write([]byte("Missing job '" + jobName + "'"))
+				w.Write([]byte("Can't find job '" + jobName + "'\n"))
 				return
 			} else {
 				buf, _ = json.MarshalIndent(job, "", "  ")
 			}
 			if job.NumCompleted == job.NumJobs {
-				delete(Jobs, jobName)
+				delete(Jobs, jobID)
+				delete(Name2JobID, jobName)
 			}
 		}
 		w.Write(buf)
+		w.Write([]byte("\n"))
 	})
 
 	http.HandleFunc("/update", func(w http.ResponseWriter, r *http.Request) {
-		jobName := r.URL.Query().Get("job")
+		jobID := r.URL.Query().Get("job")
 		taskIndex := r.URL.Query().Get("index")
-		jobStatus := r.URL.Query().Get("status")
-		job, ok := Jobs[jobName]
+		taskStatus := r.URL.Query().Get("status")
+
+		job, ok := Jobs[jobID]
 		if !ok {
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("Missing job '" + jobName + "'"))
+			w.Write([]byte("Can't find job '" + jobID + "'\n"))
 			return
 		}
 
 		index, err := strconv.Atoi(taskIndex)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("Can't parsing:" + taskIndex + ":" + err.Error()))
+			w.Write([]byte("Can't parse:" + taskIndex + ":" + err.Error() + "\n"))
 			return
 		}
 
 		if index > len(job.Tasks) {
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("Index " + taskIndex + " is too big"))
+			w.Write([]byte("Index '" + taskIndex + "' is too big\n"))
 			return
 		}
 
-		if job.Tasks[index].Status != "" {
-			return
-		}
-
-		if jobStatus == "pass" {
-			log.Printf("Got PASS %s %d\n", jobName, index)
-			job.Tasks[index].Ping = time.Time{}
-			job.Tasks[index].End = time.Now()
-			job.Tasks[index].Status = "PASS"
-			job.NumCompleted++
-			job.NumPassed++
-			job.NumRunning--
-		} else if jobStatus == "fail" {
-			if job.Tasks[index].Attempts <= job.NumRetries {
-				// Retry
-				job.NumRunning--
-				StartTask(job.Name, index)
-				return
-			}
-			log.Printf("Got FAIL %s %d\n", jobName, index)
-			job.Tasks[index].Ping = time.Time{}
-			job.Tasks[index].End = time.Now()
-			job.Tasks[index].Status = "FAIL"
-			job.NumCompleted++
-			job.NumRunning--
+		if taskStatus == "pass" {
+			log.Printf("Got PASS %s %d\n", jobID, index)
+			job.Tasks[index].Pass()
+		} else if taskStatus == "fail" {
+			log.Printf("Got FAIL %s %d\n", jobID, index)
+			job.Tasks[index].Fail("Execution failed")
 		} else {
-			log.Printf("Got PING %s %d\n", jobName, index)
-			job.Tasks[index].Ping = time.Now()
+			log.Printf("Got PING %s %d\n", jobID, index)
+			job.Tasks[index].TouchPing()
 		}
 	})
 
