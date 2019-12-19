@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -89,6 +91,8 @@ func createFunc(cmd *cobra.Command, args []string) {
 	}
 	if flavor != "" {
 		u += fmt.Sprintf("&flavor=%s", flavor)
+		fmt.Printf("Provisioning '%s' type of machines...\n", flavor)
+		time.Sleep(2 * time.Second)
 	}
 	for _, e := range envs {
 		u += fmt.Sprintf("&env=%s", url.QueryEscape(e))
@@ -101,7 +105,7 @@ func createFunc(cmd *cobra.Command, args []string) {
 
 	res, err := curl(u, headers)
 	if len(res) > 0 {
-		fmt.Printf("%s\n", res)
+		fmt.Printf("%s", res)
 	}
 	if err != nil {
 		fmt.Printf("Error: %s\n", err)
@@ -119,7 +123,7 @@ func waitFunc(cmd *cobra.Command, args []string) {
 	for {
 		res, err := curl(u, nil)
 		if strings.Contains(res, "find job") {
-			fmt.Printf("%s\n", res)
+			fmt.Printf("%s", res)
 			os.Exit(1)
 		}
 
@@ -133,7 +137,7 @@ func waitFunc(cmd *cobra.Command, args []string) {
 			os.Exit(1)
 		}
 		if status.NumCompleted == status.NumJobs {
-			fmt.Printf("%s\n", res)
+			fmt.Printf("%s", res)
 			break
 		}
 	}
@@ -148,16 +152,30 @@ func statusFunc(cmd *cobra.Command, args []string) {
 	}
 
 	res, err := curl(u, nil)
-	fmt.Printf("%s\n", res)
+	if len(res) > 0 {
+		fmt.Printf("%s", res)
+	}
 	if err != nil {
 		fmt.Printf("Error: %s\n", err)
-		fmt.Printf("%s\n", res)
 		os.Exit(1)
 	}
 
 }
 
 func main() {
+	Cmd := exec.Command("kubectl", "get", "cm/ibm-cloud-cluster-ingress-info",
+		"-n", "kube-system",
+		"-o", `go-template={{index .data "ingress-subdomain" }}`)
+	output, err := Cmd.Output()
+	if err != nil {
+		fmt.Printf("Can't determine the URL of the cluster: %s\n", err)
+		if len(output) > 0 {
+			fmt.Printf("%s\n", string(output))
+		}
+		os.Exit(1)
+	}
+	host = "jobcontroller-default." + string(output)
+
 	createCmd := &cobra.Command{
 		Use:   "create MYJOB",
 		Short: "Create a new Job",

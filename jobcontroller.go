@@ -391,10 +391,11 @@ func main() {
 				w.WriteHeader(http.StatusBadRequest)
 				w.Write([]byte("Can't find job '" + jobName + "'\n"))
 				return
-			} else {
-				buf, _ = json.MarshalIndent(job, "", "  ")
 			}
-			if job.NumCompleted == job.NumJobs {
+			copyJob := *job
+
+			buf, _ = json.MarshalIndent(&copyJob, "", "  ")
+			if copyJob.NumCompleted == copyJob.NumJobs {
 				delete(Jobs, jobID)
 				delete(Name2JobID, jobName)
 			}

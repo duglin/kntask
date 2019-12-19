@@ -3,7 +3,7 @@
 [[ -n "${K_JOB_INDEX}" ]] && index=" | Index: ${K_JOB_INDEX}"
 [[ -n "${*}" ]] && args=" | Args: $*"
 
-echo "In app ${index} ${args} $(hostname)"
+echo "In app ${index} ${args} | $(hostname)"
 echo sleeping ${SLEEP:-1}
 sleep ${SLEEP:-1}
 env | sort | grep -v -e JOBCONTROLLER -e TEST_ -e KUBERNETES -e K_TASK_HEADERS

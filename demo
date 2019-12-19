@@ -32,8 +32,5 @@ doit ./load -l 10 0 http://test-default.kndev.us-south.containers.appdomain.clou
 comment --pause "See pods DID scale"
 doit kubectl get pods
 
-comment --pause "Now async"
-doit curl -si http://test-default.kndev.us-south.containers.appdomain.cloud?async
-
 comment --pause "Clean..."
 doit kn service delete test
