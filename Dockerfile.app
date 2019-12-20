@@ -1,3 +1,4 @@
 FROM ubuntu
-COPY /app /
-CMD /app
+COPY /app /doit
+# CMD [ "arg1" ]
+ENTRYPOINT [ "/doit" ]

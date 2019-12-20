@@ -27,7 +27,7 @@ comment "Now create our batch job (run service 5 times, no retries)"
 doit kn job create job1 --service=test --num=5
 
 comment "Now wait for it to finish"
-doit time kn job wait job1
+doit kn job wait job1
 comment "Notice that some should have failed"
 
 # doit --noexec klog test
@@ -52,11 +52,12 @@ doit time kn job create job3 --service=test --num=50 --retry=10 --parallel=10 --
 doit kubectl get pods \| grep -e -3-
 
 comment "Now do a job with ALL possible flags"
-doit kn job create job4 --service=test --flavor=4x16 \
-  --env=foo=bar --env=bar=foo --retry=2 --parallel=5 --wait -- arg1 arg2
-doit --noexec klog test
-kubectl logs --tail=-1 -l serving.knative.dev/service=test -c user-container |
+doit kn service create test1 --image=duglin/app -l type=task
+doit kn job create job4 --service=test1 --flavor=4x16 \
+  --env=PASS=true --retry=2 --parallel=5 --wait -- arg1 arg2
+doit --noexec klog test1
+kubectl logs --tail=-1 -l serving.knative.dev/service=test1 -c user-container |
  sed -n 'H; /Output:/h; ${g;p;}'
 comment "Notice the env vars and the cmd line args that were passed in"
 
-kn service delete test
+kn service delete test test1

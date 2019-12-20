@@ -133,7 +133,7 @@ func waitFunc(cmd *cobra.Command, args []string) {
 		}{}
 		err = json.Unmarshal([]byte(res), &status)
 		if err != nil {
-			fmt.Printf("Error parsing: %s\n", err)
+			fmt.Printf("Error parsing: %s\n%s\n", res, err)
 			os.Exit(1)
 		}
 		if status.NumCompleted == status.NumJobs {

@@ -27,11 +27,13 @@ run: .app
 	docker run -ti -p 8080:8080 duglin/app
 
 deploy: .jobcontroller .taskmgr .app
-	kn service delete test jobcontroller > /dev/null 2>&1 || true
+	kn service delete test test1 jobcontroller > /dev/null 2>&1 || true
 	sleep 2
 	kn service create jobcontroller --image duglin/jobcontroller --min-scale=1
 	./prep
-	kubectl create -f s.yaml > /dev/null 2>&1
+	# kubectl create -f s.yaml > /dev/null 2>&1
+	kn service create test --image duglin/app --min-scale=1 \
+		--concurrency-limit=1 -l type=task
 
 load: load.go
 	go build -o load load.go

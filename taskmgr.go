@@ -33,6 +33,14 @@ func main() {
 		// log.Printf("Got a request\n")
 
 		taskCmd := []string{"/app"}
+		if len(os.Args) > 1 {
+			if err := json.Unmarshal([]byte(os.Args[1]), &taskCmd); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(fmt.Sprintf("Error parsing cmd: %s\n", err)))
+				fmt.Printf("Error parsing cmd: %s\n", err)
+				return
+			}
+		}
 
 		body := []byte{}
 		if r.Body != nil {
@@ -55,7 +63,7 @@ func main() {
 			// Env vars are copied and here could be lots
 			if name == "K_ENV" {
 				for _, value := range values {
-					log.Printf("Adding env: %s\n", value)
+					// log.Printf("Adding env: %s\n", value)
 					taskEnv = append(taskEnv, value)
 				}
 				continue
@@ -119,7 +127,7 @@ func main() {
 		done = true
 		if err == nil {
 			// Worked
-			log.Printf("Ran ok (%s/%s,%s)\n", jobName, jobID, index)
+			// log.Printf("Ran ok (%s/%s,%s)\n", jobName, jobID, index)
 			updateJob(jobID, index, "pass")
 			w.WriteHeader(http.StatusOK)
 			w.Write(outBuf.Bytes())
