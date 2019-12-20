@@ -16,6 +16,10 @@ Limitations:
   MUST have a `/app` as the thing that is executed.
 
 
+edit cm/config-autoscaler:
+  target-burst-capacity: "0"
+  container-concurrency-target-percentage: "100"
+
 TODOs:
 - get CMD/ENTRYPOINT from image so we can use it instead of /app
 

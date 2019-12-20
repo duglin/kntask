@@ -67,7 +67,8 @@ while true ; do
 	(
 
     # printf "Cluster: %-40s                   $(date "+%r")\\n" "${CLUSTER}"
-    printf "Cluster: ${CLUSTER}    Domain: ${DOMAIN}\\n"
+    line="Cluster: ${CLUSTER}    Domain: ${DOMAIN}\\n"
+    echo ${line::79}
 
 	echo
 

@@ -80,7 +80,7 @@ func main() {
 		}
 
 		headersJson, _ := json.Marshal(r.Header)
-		taskEnv = append(taskEnv, "K_TASK_HEADERS="+string(headersJson))
+		taskEnv = append(taskEnv, "K_HEADERS="+string(headersJson))
 
 		// // taskEnv = append(taskEnv, "K_TASK_URL="+r.URL.String())
 		// if jobName != "" {
@@ -133,7 +133,7 @@ func main() {
 		log.Printf("Output:\n%s\n", string(outBuf.Bytes()))
 	})
 
-	log.Print("Taskmgr listening on port 8080\n")
+	// log.Print("Taskmgr listening on port 8080\n")
 	http.ListenAndServe(":8080", nil)
 }
 

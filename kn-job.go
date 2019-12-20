@@ -15,14 +15,14 @@ import (
 )
 
 /*
-# kn job create MYJOB --task=MYTASK --num=# --parallel=# --retry=# \
+# kn job create MYJOB --service=MYSERVICE --num=# --parallel=# --retry=# \
 #                     --flavor=FLAVOR --env --wait/-w
 # kn job wait MYJOB
 # kn job status MYJOB
 */
 
 var jobName string
-var taskName string
+var serviceName string
 var num int
 var parallel int
 var retry int
@@ -55,13 +55,13 @@ func curl(url string, headers [][2]string) (string, error) {
 func createFunc(cmd *cobra.Command, args []string) {
 	dashdash := cmd.Flags().ArgsLenAtDash()
 	jobName = args[0]
-	taskArgs := []string{}
+	serviceArgs := []string{}
 
 	if dashdash == 0 {
 		fmt.Printf("Missing JOB\n")
 		os.Exit(1)
 	} else if dashdash > 0 {
-		taskArgs = args[dashdash:]
+		serviceArgs = args[dashdash:]
 	}
 
 	if num <= 0 {
@@ -79,7 +79,7 @@ func createFunc(cmd *cobra.Command, args []string) {
 
 	u := "http://" + host + "/create?"
 	u += "job=" + jobName
-	u += "&task=" + taskName
+	u += "&service=" + serviceName
 	if num > 1 {
 		u += fmt.Sprintf("&num=%d", num)
 	}
@@ -99,7 +99,7 @@ func createFunc(cmd *cobra.Command, args []string) {
 	}
 
 	headers := [][2]string{}
-	for i, arg := range taskArgs {
+	for i, arg := range serviceArgs {
 		headers = append(headers, [2]string{fmt.Sprintf("ARG_%d", i+1), arg})
 	}
 
@@ -177,33 +177,32 @@ func main() {
 	host = "jobcontroller-default." + string(output)
 
 	createCmd := &cobra.Command{
-		Use:   "create MYJOB",
-		Short: "Create a new Job",
-		Long:  "",
-		Args:  cobra.MinimumNArgs(1),
-		Run:   createFunc,
+		Use:                   "create MYJOB [flags] [ -- SERVICE_ARGS... ]",
+		Short:                 "Create a new Job",
+		Args:                  cobra.MinimumNArgs(1),
+		Run:                   createFunc,
+		DisableFlagsInUseLine: true,
 	}
 
-	createCmd.Flags().StringVarP(&taskName, "task", "t", "",
-		"Name of task to run")
-	createCmd.MarkFlagRequired("task")
+	createCmd.Flags().StringVarP(&serviceName, "service", "s", "",
+		"Name of KnService to run")
+	createCmd.MarkFlagRequired("service")
 	createCmd.Flags().IntVarP(&num, "num", "n", 1,
-		"Number of tasks in the Job")
+		"Number of times to run the Service")
 	createCmd.Flags().IntVarP(&parallel, "parallel", "p", 1,
-		"Max number of tasks to run at one time")
+		"Max number of services calls to run at one time")
 	createCmd.Flags().IntVarP(&retry, "retry", "r", 0,
-		"Number of times to retry a failed task")
+		"Number of times to retry a failed service call")
 	createCmd.Flags().StringVarP(&flavor, "flavor", "f", "",
-		"Flavor of VM to allocate for tasks")
+		"Flavor of VM to allocate for service")
 	createCmd.Flags().StringArrayVarP(&envs, "env", "e", nil,
-		"Add env var(s) to task")
+		"Add env var(s) to service")
 	createCmd.Flags().BoolVarP(&wait, "wait", "w", false,
 		"Wait for Job to complete")
 
 	waitCmd := &cobra.Command{
 		Use:   "wait MYJOB",
 		Short: "Wait for a Job to complete",
-		Long:  "",
 		Args:  cobra.ExactArgs(1),
 		Run:   waitFunc,
 	}
@@ -211,7 +210,6 @@ func main() {
 	statusCmd := &cobra.Command{
 		Use:   "status [ MYJOB ]",
 		Short: "Get the status of a Job, or all Jobs",
-		Long:  "",
 		Args:  cobra.MaximumNArgs(1),
 		Run:   statusFunc,
 	}

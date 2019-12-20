@@ -10,15 +10,16 @@ doit cat Dockerfile.app
 
 comment --pause "Deploy it... (as a 'task')"
 doit kn service create test --image duglin/app -l type=task
+URL=$(tail -1 out)
 
 comment --pause Now hit it
-doit curl -s http://test-default.kndev.us-south.containers.appdomain.cloud
+doit curl -s ${URL}
 
 comment --pause Check pods
 doit kubectl get pods
 
 comment --pause "Load it up (10 clients)"
-doit ./load -l 10 0 http://test-default.kndev.us-south.containers.appdomain.cloud
+doit ./load -l 10 0 ${URL}
 
 comment --pause "See pods didn't scale"
 doit kubectl get pods
@@ -27,7 +28,7 @@ comment --pause Now set concurrency to 1
 doit kn service update test --concurrency-limit=1
 
 comment --pause "Load it up again"
-doit ./load -l 10 0 http://test-default.kndev.us-south.containers.appdomain.cloud
+doit ./load -l 10 0 ${URL}
 
 comment --pause "See pods DID scale"
 doit kubectl get pods

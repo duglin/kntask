@@ -20,11 +20,11 @@ comment "Our app:"
 doit cat app
 comment "Notice it will fail 1/3 of the time"
 
-comment "Deploy the task"
+comment "Deploy the service (task)"
 doit kn service create test --image duglin/app -l type=task
 
-comment "Now create our batch job (run task 5 times, no retries)"
-doit kn job create job1 --task=test --num=5
+comment "Now create our batch job (run service 5 times, no retries)"
+doit kn job create job1 --service=test --num=5
 
 comment "Now wait for it to finish"
 doit time kn job wait job1
@@ -34,26 +34,29 @@ comment "Notice that some should have failed"
 # klog test
 
 comment "Now create another batch with retries"
-doit kn job create job2 --task=test --num=5 --retry=3
+doit kn job create job2 --service=test --num=5 --retry=3
 doit time kn job wait job2
 comment "Now all should have PASSed but some with retries"
 
-comment "Force our task to scale"
+comment "Force our service to scale"
 doit kn service update test --concurrency-limit=1
 comment "Run batch job 50 times, retry 10 times, but 10 at the same time"
-comment "Should force our task to scale, but only to about 10"
-doit kn job create job3 --task=test --num=50 --retry=10 --parallel=10
-doit time kn job wait job3
+comment "Should force our service to scale, but only to about 10"
+doit time kn job create job3 --service=test --num=50 --retry=10 --parallel=10 --env PASS=true -w
+# doit time kn job wait job3
 doit kubectl get pods \| grep -e -2-
 
 doit kn service update test --concurrency-limit=4
-doit kn job create job3 --task=test --num=50 --retry=10 --parallel=10
-doit time kn job wait job3
+doit time kn job create job3 --service=test --num=50 --retry=10 --parallel=10 --env PASS=true -w
+# doit time kn job wait job3
 doit kubectl get pods \| grep -e -3-
 
 comment "Now do a job with ALL possible flags"
-doit kn job create job4 --task=test --flavor=4x16 --env=foo=bar --env=bar=foo \
-	--wait -- arg1 arg2
+doit kn job create job4 --service=test --flavor=4x16 \
+  --env=foo=bar --env=bar=foo --retry=2 --parallel=5 --wait -- arg1 arg2
 doit --noexec klog test
 kubectl logs --tail=-1 -l serving.knative.dev/service=test -c user-container |
  sed -n 'H; /Output:/h; ${g;p;}'
+comment "Notice the env vars and the cmd line args that were passed in"
+
+kn service delete test
