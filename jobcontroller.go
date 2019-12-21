@@ -60,17 +60,21 @@ func (t *Service) Run(isRestart bool) {
 			req.Header.Add("K_ARG_"+strconv.Itoa(i+1), arg)
 		}
 
-		log.Printf("Calling do:%s\n", url)
+		log.Printf("Calling:%s\n", url)
 		res, err := (&http.Client{}).Do(req)
 
 		body := ""
+		sc := 0
 		if res != nil && res.Body != nil {
 			var buf = []byte{}
 			buf, _ = ioutil.ReadAll(res.Body)
 			body = string(buf)
 			res.Body.Close()
 		}
-		log.Printf("curl res(%d): %s\n", res.StatusCode, body)
+		if res != nil {
+			sc = res.StatusCode
+		}
+		log.Printf("curl res(%d): %s\n", sc, body)
 
 		if err != nil {
 			log.Printf("Curl res: %s\n", body)
