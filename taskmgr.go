@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -60,7 +61,7 @@ func main() {
 				continue
 			}
 
-			// Env vars are copied and here could be lots
+			// Env vars are copied and there could be lots
 			if name == "K_ENV" {
 				for _, value := range values {
 					// log.Printf("Adding env: %s\n", value)
@@ -79,6 +80,31 @@ func main() {
 			}
 		}
 
+		// Use the incoming URL "Path" as the args
+		for _, part := range strings.Split(r.URL.Path, "/") {
+			part, err := url.PathUnescape(part)
+			if part == "" || err != nil {
+				continue
+			}
+			taskCmd = append(taskCmd, part)
+		}
+
+		// Use the incoming URL "Query Params" as flags
+		for key, values := range r.URL.Query() {
+			for _, val := range values {
+				// Only single char keys and vals of "" map to - flags
+				if val == "" && len(key) == 1 {
+					taskCmd = append(taskCmd, fmt.Sprintf("-%s", key))
+				} else {
+					if val != "" {
+						val = "=" + val
+					}
+					taskCmd = append(taskCmd, fmt.Sprintf("--%s%s", key, val))
+				}
+			}
+		}
+
+		// Append any K_ARG_# env vars as args to the cmd line
 		for i := 1; ; i++ {
 			arg, ok := r.Header[fmt.Sprintf("K_arg_%d", i)]
 			if !ok {
@@ -87,8 +113,13 @@ func main() {
 			taskCmd = append(taskCmd, arg[0])
 		}
 
+		tmpURL := r.URL
+		tmpURL.Host = r.Host
+
 		headersJson, _ := json.Marshal(r.Header)
 		taskEnv = append(taskEnv, "K_HEADERS="+string(headersJson))
+		taskEnv = append(taskEnv, "K_URL="+tmpURL.String())
+		taskEnv = append(taskEnv, "K_METHOD="+r.Method)
 
 		// // taskEnv = append(taskEnv, "K_TASK_URL="+r.URL.String())
 		// if jobName != "" {

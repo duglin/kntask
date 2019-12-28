@@ -44,8 +44,24 @@ func (t *Service) Run(isRestart bool) {
 		log.Printf("Start service: %s/%d\n", t.job.ID, t.Index)
 
 		job := t.job
-		url := fmt.Sprintf("http://%s.default.svc.cluster.local?async",
-			job.ServiceName)
+
+		// If ServiceName has a "/" then assume they want a certain Path
+		// to be used
+		path := ""
+		parts := strings.SplitN(job.ServiceName, "/", 2)
+		if len(parts) > 1 {
+			path = "/" + parts[1]
+		}
+
+		// Append ?async but use "&" if we already have some query params
+		if strings.Index(path, "?") >= 0 {
+			path += "&async"
+		} else {
+			path += "?async"
+		}
+
+		url := fmt.Sprintf("http://%s.default.svc.cluster.local%s",
+			parts[0], path)
 		req, err := http.NewRequest("GET", url, nil)
 		req.Header.Add("K_JOB_NAME", job.Name)
 		req.Header.Add("K_JOB_ID", job.ID)
