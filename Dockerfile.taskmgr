@@ -1,7 +1,9 @@
 FROM golang
-COPY taskmgr.go /
+COPY taskmgr.go /src/
+WORKDIR /src/
+RUN go get -d ./...
 RUN GO_EXTLINK_ENABLED=0 CGO_ENABLED=0 go build \
     -ldflags "-w -extldflags -static" \
 	-tags netgo -installsuffix netgo \
-	-o /taskmgr /taskmgr.go
+	-o /taskmgr /src/taskmgr.go
 CMD /taskmgr

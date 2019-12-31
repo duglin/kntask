@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -13,6 +14,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 func curl(url string) (string, error) {
@@ -34,6 +37,18 @@ func main() {
 		// log.Printf("Got a request\n")
 
 		taskCmd := []string{"/app"}
+		taskEnv := os.Environ()
+
+		doStream := false
+		for _, v := range r.Header["Upgrade"] {
+			if strings.HasPrefix(v, "websocket") {
+				doStream = true
+				taskEnv = append(taskEnv, "K_STREAM=true")
+				break
+			}
+		}
+
+		// os.Args[1] is a JSON serialization of the ENTRYPOINT cmd
 		if len(os.Args) > 1 {
 			if err := json.Unmarshal([]byte(os.Args[1]), &taskCmd); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
@@ -43,16 +58,6 @@ func main() {
 			}
 		}
 
-		body := []byte{}
-		if r.Body != nil {
-			body, _ = ioutil.ReadAll(r.Body)
-		}
-
-		index := r.Header.Get("K_JOB_INDEX")
-		jobName := r.Header.Get("K_JOB_NAME")
-		jobID := r.Header.Get("K_JOB_ID")
-
-		taskEnv := os.Environ()
 		for name, values := range r.Header {
 			name = strings.ToUpper(name)
 
@@ -64,7 +69,6 @@ func main() {
 			// Env vars are copied and there could be lots
 			if name == "K_ENV" {
 				for _, value := range values {
-					// log.Printf("Adding env: %s\n", value)
 					taskEnv = append(taskEnv, value)
 				}
 				continue
@@ -121,18 +125,10 @@ func main() {
 		taskEnv = append(taskEnv, "K_URL="+tmpURL.String())
 		taskEnv = append(taskEnv, "K_METHOD="+r.Method)
 
-		// // taskEnv = append(taskEnv, "K_TASK_URL="+r.URL.String())
-		// if jobName != "" {
-		// taskEnv = append(taskEnv, "K_JOB_NAME="+jobName)
-		// }
-		// if jobID != "" {
-		// taskEnv = append(taskEnv, "K_JOB_ID="+jobID)
-		// }
-		// if index != "" {
-		// taskEnv = append(taskEnv, "K_JOB_INDEX="+index)
-		// }
-
+		index := r.Header.Get("K_JOB_INDEX")
+		jobID := r.Header.Get("K_JOB_ID")
 		done := false
+
 		if jobID != "" && index != "" {
 			go func() {
 				for !done {
@@ -142,34 +138,121 @@ func main() {
 			}()
 		}
 
-		// log.Printf("Stdin buf: %s\n", string(body))
-		outBuf := bytes.Buffer{}
-		outWr := bufio.NewWriter(&outBuf)
-		cmd := exec.Cmd{
-			Path:   taskCmd[0],
-			Args:   taskCmd[0:],
-			Env:    taskEnv,
-			Stdin:  bytes.NewReader(body),
-			Stdout: outWr, // os.Stdout, // buffer these
-			Stderr: outWr, // os.Stderr,
+		var outBuf bytes.Buffer
+		var outWr io.Writer
+		var inRd io.Reader
+		var conn *websocket.Conn
+		var err error
+
+		if !doStream {
+			body := []byte{}
+			if r.Body != nil {
+				body, _ = ioutil.ReadAll(r.Body)
+			}
+
+			inRd = bytes.NewReader(body)
+			outBuf = bytes.Buffer{}
+			outWr = bufio.NewWriter(&outBuf)
+		} else {
+			upgrader := websocket.Upgrader{}
+			conn, err = upgrader.Upgrade(w, r, nil)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(err.Error() + "\n"))
+				return
+			}
+			defer conn.Close()
 		}
 
-		err := cmd.Run()
-		done = true
-		if err == nil {
-			// Worked
-			// log.Printf("Ran ok (%s/%s,%s)\n", jobName, jobID, index)
-			updateJob(jobID, index, "pass")
-			w.WriteHeader(http.StatusOK)
-			w.Write(outBuf.Bytes())
-		} else {
-			log.Printf("Error(%s/%s,%s): %s\n", jobName, jobID, index, err)
-			updateJob(jobID, index, "fail")
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error() + "\n"))
-			w.Write(outBuf.Bytes())
+		cmd := exec.Cmd{
+			Path: taskCmd[0],
+			Args: taskCmd[0:],
+			Env:  taskEnv,
+			// Stdin:  inRd,  // bytes.NewReader(body),
+			// Stdout: outWr, // os.Stdout, // buffer these
+			// Stderr: outWr, // os.Stderr,
 		}
-		log.Printf("Output:\n%s\n", string(outBuf.Bytes()))
+
+		if !doStream {
+			cmd.Stdin = inRd
+			cmd.Stdout = outWr
+			cmd.Stderr = outWr
+			err = cmd.Run()
+		} else {
+			stdin, _ := cmd.StdinPipe()
+			stdout, _ := cmd.StdoutPipe()
+			stderr, _ := cmd.StderrPipe()
+			go func() {
+				for {
+					_, p, err := conn.ReadMessage()
+					if len(p) > 0 {
+						stdin.Write(p)
+						stdin.Write([]byte("\n"))
+					}
+					if err != nil {
+						break
+					}
+				}
+				stdin.Close()
+			}()
+			go func() {
+				buf := make([]byte, 1024)
+				for {
+					n, err := stdout.Read(buf)
+					if n <= 0 && err != nil {
+						break
+					}
+					outBuf.Write([]byte(buf[:n]))
+					s := []byte(strings.TrimRight(string(buf[:n]), "\n\r"))
+					conn.WriteMessage(websocket.TextMessage, s)
+				}
+				stdin.Close()
+			}()
+			go func() {
+				buf := make([]byte, 1024)
+				for {
+					n, err := stderr.Read(buf)
+					if n <= 0 && err != nil {
+						break
+					}
+					outBuf.Write([]byte(buf[:n]))
+					s := []byte(strings.TrimRight(string(buf[:n]), "\n\r"))
+					conn.WriteMessage(websocket.TextMessage, s)
+				}
+				stdin.Close()
+			}()
+
+			err = cmd.Start()
+			if err == nil {
+				err = cmd.Wait()
+			}
+			log.Printf("Stream ended\n")
+		}
+		// 'err' is any possible error from trying to run the command
+
+		// err := cmd.Run()
+		done = true
+		if err == nil { // Worked
+			updateJob(jobID, index, "pass")
+			if !doStream {
+				w.WriteHeader(http.StatusOK)
+			}
+		} else { // Command failed
+			// jobName := r.Header.Get("K_JOB_NAME")
+			// log.Printf("Error(%s/%s,%s): %s\n", jobName, jobID, index, err)
+			updateJob(jobID, index, "fail")
+			if !doStream {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(err.Error() + "\n"))
+			}
+		}
+
+		if outBuf.Len() > 0 {
+			if !doStream {
+				w.Write(outBuf.Bytes())
+			}
+			log.Printf("Output:\n%s\n", string(outBuf.Bytes()))
+		}
 	})
 
 	// log.Print("Taskmgr listening on port 8080\n")
@@ -180,8 +263,6 @@ func updateJob(jobID string, index string, status string) {
 	if jobID == "" || index == "" {
 		return
 	}
-	// domain := "kndev.us-south.containers.appdomain.cloud"
-	// url := "http://jobcontroller-default." + domain
 	url := "http://jobcontroller.default.svc.cluster.local"
 	if status != "" {
 		status = "&status=" + status

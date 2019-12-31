@@ -1,10 +1,14 @@
-all: .taskmgr .app .jobcontroller load kn-job
+all: .taskmgr .app .jobcontroller load kn-job client
 
 taskmgr: taskmgr.go
 	GO_EXTLINK_ENABLED=0 CGO_ENABLED=0 go build \
    	-ldflags "-s -w -extldflags -static" \
 	-tags netgo -installsuffix netgo \
 	-o taskmgr taskmgr.go
+
+client: client.go
+	go build -o client client.go
+	GOOS=darwin GOARCH=amd64 go build -o client.mac load.go
 
 .taskmgr: taskmgr.go Dockerfile.taskmgr
 	go build -o /dev/null taskmgr.go # quick fail
@@ -18,7 +22,7 @@ taskmgr: taskmgr.go
 	docker push duglin/jobcontroller
 	touch .jobcontroller
 
-.app: app Dockerfile.app .taskmgr
+.app: app Dockerfile.app 
 	docker build -f Dockerfile.app -t duglin/app .
 	docker push duglin/app
 	touch .app
@@ -27,7 +31,7 @@ run: .app
 	docker run -ti -p 8080:8080 duglin/app
 
 deploy: .jobcontroller .taskmgr .app
-	kn service delete test test1 jobcontroller > /dev/null 2>&1 || true
+	kn service delete test jobcontroller > /dev/null 2>&1 || true
 	sleep 2
 	kn service create jobcontroller --image duglin/jobcontroller --min-scale=1
 	./prep
@@ -44,4 +48,5 @@ kn-job: kn-job.go
 	GOOS=darwin GOARCH=amd64 go build -o kn-job.mac kn-job.go
 
 clean:
-	rm -f jobcontroller load load.mac taskmgr kn-job kn-job.mac load.mac
+	rm -f jobcontroller load taskmgr kn-job client *.mac
+	kubectl delete ksvc/test ksvc/jobcontroller > /dev/null 2>&1 || true
