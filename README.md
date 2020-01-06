@@ -21,3 +21,6 @@ https://cloud.ibm.com/docs/containers?topic=containers-storage_planning#choose_s
 https://docs.microsoft.com/en-us/azure/batch/tutorial-rendering-cli
 https://ibm.ent.box.com/notes/573702339552
 
+Other "wrappers" we could do:
+- KEDA puller
+- Request for work/event in general - like Lambda does (apparently)

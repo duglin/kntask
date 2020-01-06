@@ -9,14 +9,13 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 )
 
 /*
 # kn job create MYJOB --service=MYSERVICE --num=# --parallel=# --retry=# \
-#                     --flavor=FLAVOR --env --wait/-w
+#                     --env --wait/-w
 # kn job wait MYJOB
 # kn job status MYJOB
 */
@@ -26,7 +25,6 @@ var serviceName string
 var num int
 var parallel int
 var retry int
-var flavor string
 var envs []string
 var wait bool
 var args []string
@@ -88,11 +86,6 @@ func createFunc(cmd *cobra.Command, args []string) {
 	}
 	if retry > 0 {
 		u += fmt.Sprintf("&retry=%d", retry)
-	}
-	if flavor != "" {
-		u += fmt.Sprintf("&flavor=%s", flavor)
-		fmt.Printf("Provisioning '%s' type of machines...\n", flavor)
-		time.Sleep(2 * time.Second)
 	}
 	for _, e := range envs {
 		u += fmt.Sprintf("&env=%s", url.QueryEscape(e))
@@ -193,8 +186,6 @@ func main() {
 		"Max number of services calls to run at one time")
 	createCmd.Flags().IntVarP(&retry, "retry", "r", 0,
 		"Number of times to retry a failed service call")
-	createCmd.Flags().StringVarP(&flavor, "flavor", "f", "",
-		"Flavor of VM to allocate for service")
 	createCmd.Flags().StringArrayVarP(&envs, "env", "e", nil,
 		"Add env var(s) to service")
 	createCmd.Flags().BoolVarP(&wait, "wait", "w", false,

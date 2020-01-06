@@ -33,5 +33,16 @@ doit ./load -l 10 0 ${URL}
 comment --pause "See pods DID scale"
 doit kubectl get pods
 
+comment --pause "Create a KnService that uses certain nodes"
+doit kn service create test2 --image duglin/app --min-scale=1 \
+	-l type=task -l flavor=2x16 --concurrency-limit=1
+URL=$(tail -1 out)
+
+doit "kubectl get pods -o custom-columns=NAME:.metadata.name,NODE:.status.hostIP,FLAVOR:.metadata.labels.flavor && kubectl get nodes -o custom-columns=NAME:.metadata.name,FLAVOR:.metadata.labels.flavor"
+
+doit ./load -l 10 0 ${URL}
+
+doit "kubectl get pods -o custom-columns=NAME:.metadata.name,NODE:.status.hostIP,FLAVOR:.metadata.labels.flavor && kubectl get nodes -o custom-columns=NAME:.metadata.name,FLAVOR:.metadata.labels.flavor"
+
 comment --pause "Clean..."
-doit kn service delete test
+doit kn service delete test test2

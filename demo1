@@ -53,7 +53,7 @@ doit kubectl get pods \| grep -e -3-
 
 comment "Now do a job with ALL possible flags"
 doit kn service create test1 --image=duglin/app -l type=task
-doit kn job create job4 --service=test1 --flavor=4x16 \
+doit kn job create job4 --service=test1 \
   --env=PASS=true --retry=2 --parallel=5 --wait -- arg1 arg2
 doit --noexec klog test1
 kubectl logs --tail=-1 -l serving.knative.dev/service=test1 -c user-container |
