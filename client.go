@@ -20,6 +20,9 @@ func main() {
 
 	if flag.NArg() > 0 {
 		host = flag.Arg(0)
+		if strings.HasPrefix(host, "http://") {
+			host = host[7:]
+		}
 	}
 
 	start := time.Now().Unix()
@@ -60,7 +63,7 @@ func main() {
 			}
 			fmt.Printf("%s Write: %s\n", time.Now().Format("15:04"),
 				string(buf[:10]))
-			time.Sleep(5 * time.Second)
+			time.Sleep(1 * time.Second)
 		}
 	} else {
 		query := ""
@@ -99,7 +102,7 @@ func main() {
 			}
 			fmt.Printf("%s Write: %s\n", time.Now().Format("15:04"),
 				string(buf))
-			time.Sleep(5 * time.Second)
+			time.Sleep(1 * time.Second)
 		}
 	}
 
