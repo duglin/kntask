@@ -144,7 +144,7 @@ func (t *Service) Fail(reason string) {
 		return
 	}
 
-	if t.Attempts <= t.job.NumRetries {
+	if t.job.MaxRetries == -1 || t.Attempts <= t.job.MaxRetries {
 		t.mutex.Unlock()
 		t.Run(true)
 		return
@@ -166,7 +166,7 @@ type Job struct {
 	ServiceName string
 	NumJobs     int
 	Parallel    int
-	NumRetries  int
+	MaxRetries  int
 	Flavor      string
 	Envs        []string
 	Args        []string
@@ -319,7 +319,7 @@ func main() {
 			ServiceName: serviceName,
 			NumJobs:     1,
 			Parallel:    10,
-			NumRetries:  0,
+			MaxRetries:  0,
 			Flavor:      flavor,
 			Envs:        envs,
 
@@ -354,13 +354,13 @@ func main() {
 		}
 
 		if retry != "" {
-			if job.NumRetries, err = strconv.Atoi(retry); err != nil {
+			if job.MaxRetries, err = strconv.Atoi(retry); err != nil {
 				w.WriteHeader(http.StatusBadRequest)
 				w.Write([]byte("Bad 'retry'\n" + err.Error()))
 				return
 			}
 
-			if job.NumRetries < 0 {
+			if job.MaxRetries < -1 {
 				w.WriteHeader(http.StatusBadRequest)
 				w.Write([]byte("Invalid 'retry' value: " + numJobs + "\n"))
 				return

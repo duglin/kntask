@@ -70,7 +70,7 @@ func createFunc(cmd *cobra.Command, args []string) {
 		fmt.Printf("Invalid '--parallel' value: %d\n", parallel)
 		os.Exit(1)
 	}
-	if retry < 0 {
+	if retry < -1 {
 		fmt.Printf("Invalid '--retry' value: %d\n", retry)
 		os.Exit(1)
 	}
@@ -84,9 +84,9 @@ func createFunc(cmd *cobra.Command, args []string) {
 	if parallel > 1 {
 		u += fmt.Sprintf("&parallel=%d", parallel)
 	}
-	if retry > 0 {
-		u += fmt.Sprintf("&retry=%d", retry)
-	}
+	// if retry > 0 {
+	u += fmt.Sprintf("&retry=%d", retry)
+	// }
 	for _, e := range envs {
 		u += fmt.Sprintf("&env=%s", url.QueryEscape(e))
 	}

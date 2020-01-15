@@ -10,14 +10,22 @@ if [[ "$K_STREAM" == "true" ]]; then
   exit 0
 fi
 
-# We're not streaming so just sleep, show env vars and randomly exit with non-0
+# We're not streaming so show env vars
 echo "In '$0' (host:$(hostname)) ${K_JOB_INDEX:+(Index:$K_JOB_INDEX) }args: $*"
+env | sort | grep -v -e JOBCONTROLLER -e ^PULL -e ^TEST -e KUBE -e K_HEADERS
 
+if [[ "$K_TYPE" == "pull" ]]; then
+	# Event pulling app so stdin is the event, just echo it
+	echo "The app saw:"
+	cat
+	exit 0
+fi
+
+# Sleep and randomly exit with non-0
 echo sleeping ${SLEEP:-1}
 sleep ${SLEEP:-1}
-env | sort | grep -v -e JOBCONTROLLER -e ^TEST -e KUBERNETES -e K_HEADERS
 
 # Fail 1/3 of the time if this is run as a batch job
-if [[ -n "$PASS" ]] && [[ -n "$K_JOB_NAME" ]] && (( $RANDOM % 3 == 0 )) ; then
+if [[ -z "$PASS" ]] && [[ -n "$K_JOB_NAME" ]] && (( $RANDOM % 3 == 0 )) ; then
   exit 1
 fi

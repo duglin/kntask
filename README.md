@@ -22,5 +22,9 @@ https://docs.microsoft.com/en-us/azure/batch/tutorial-rendering-cli
 https://ibm.ent.box.com/notes/573702339552
 
 Other "wrappers" we could do:
-- KEDA puller
+- event puller (ala keda)
 - Request for work/event in general - like Lambda does (apparently)
+
+Move job updated into Queue Proxy
+
+kubectl taint nodes 10.74.199.18 flavor=2x16:NoSchedule

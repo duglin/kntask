@@ -20,8 +20,8 @@ spec:
   - name: taskmgr
     image: duglin/taskmgr
     imagePullPolicy: Always
-    command: [ "cp" ]
-    args: [ "/taskmgr", "/vol/taskmgr" ]
+    command: [ "sh" ]
+    args: [ "-c", "cp /taskmgr /pullmgr /vol/" ]
     volumeMounts:
     - name: taskmgr
       mountPath: /vol
