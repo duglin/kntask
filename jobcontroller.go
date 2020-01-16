@@ -45,23 +45,33 @@ func (t *Service) Run(isRestart bool) {
 
 		job := t.job
 
-		// If ServiceName has a "/" then assume they want a certain Path
-		// to be used
+		host := job.ServiceName
 		path := ""
-		parts := strings.SplitN(job.ServiceName, "/", 2)
+		query := ""
+
+		// Remove and save query parameters
+		parts := strings.SplitN(job.ServiceName, "?", 2)
 		if len(parts) > 1 {
+			host = parts[0]
+			query = "?" + parts[1]
+		}
+
+		// Remove and save any "path" part of the URL
+		parts = strings.SplitN(host, "/", 2)
+		if len(parts) > 1 {
+			host = parts[0]
 			path = "/" + parts[1]
 		}
 
-		// Append ?async but use "&" if we already have some query params
-		if strings.Index(path, "?") >= 0 {
-			path += "&async"
+		// Append the "async" query parameter
+		if query != "" {
+			query += "&async"
 		} else {
-			path += "?async"
+			query += "?async"
 		}
 
-		url := fmt.Sprintf("http://%s.default.svc.cluster.local%s",
-			parts[0], path)
+		url := fmt.Sprintf("http://%s.default.svc.cluster.local%s%s",
+			host, path, query)
 		req, err := http.NewRequest("GET", url, nil)
 		req.Header.Add("K_JOB_NAME", job.Name)
 		req.Header.Add("K_JOB_ID", job.ID)

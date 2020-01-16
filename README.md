@@ -28,3 +28,8 @@ Other "wrappers" we could do:
 Move job updated into Queue Proxy
 
 kubectl taint nodes 10.74.199.18 flavor=2x16:NoSchedule
+
+Other options:
+- new QP to create pod for each batch job instead of exec
+- new QP to create job for each batch job
+  - main container could just sleep

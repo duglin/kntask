@@ -13,22 +13,9 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 
 	"github.com/gorilla/websocket"
 )
-
-func curl(url string) (string, error) {
-	res, err := http.Get(url)
-	body := ""
-	if res != nil && res.Body != nil {
-		var buf = []byte{}
-		buf, _ = ioutil.ReadAll(res.Body)
-		body = string(buf)
-		res.Body.Close()
-	}
-	return body, err
-}
 
 func main() {
 	log.SetFlags(log.Ltime)
@@ -125,19 +112,6 @@ func main() {
 		taskEnv = append(taskEnv, "K_URL="+tmpURL.String())
 		taskEnv = append(taskEnv, "K_METHOD="+r.Method)
 
-		index := r.Header.Get("K_JOB_INDEX")
-		jobID := r.Header.Get("K_JOB_ID")
-		done := false
-
-		if jobID != "" && index != "" {
-			go func() {
-				for !done {
-					updateJob(jobID, index, "") // Ping
-					time.Sleep(5 * time.Second)
-				}
-			}()
-		}
-
 		var outBuf bytes.Buffer
 		var outWr io.Writer
 		var inRd io.Reader
@@ -231,16 +205,13 @@ func main() {
 		// 'err' is any possible error from trying to run the command
 
 		// err := cmd.Run()
-		done = true
 		if err == nil { // Worked
-			updateJob(jobID, index, "pass")
 			if !doStream {
 				w.WriteHeader(http.StatusOK)
 			}
 		} else { // Command failed
 			// jobName := r.Header.Get("K_JOB_NAME")
 			// log.Printf("Error(%s/%s,%s): %s\n", jobName, jobID, index, err)
-			updateJob(jobID, index, "fail")
 			if !doStream {
 				w.WriteHeader(http.StatusInternalServerError)
 				w.Write([]byte(err.Error() + "\n"))
@@ -257,19 +228,4 @@ func main() {
 
 	// log.Print("Taskmgr listening on port 8080\n")
 	http.ListenAndServe(":8080", nil)
-}
-
-func updateJob(jobID string, index string, status string) {
-	if jobID == "" || index == "" {
-		return
-	}
-	url := "http://jobcontroller.default.svc.cluster.local"
-	if status != "" {
-		status = "&status=" + status
-	}
-	cmd := fmt.Sprintf("%s/update?job=%s&index=%s%s", url, jobID, index, status)
-	res, err := curl(cmd)
-	if err != nil {
-		log.Printf("Curl: %s | %s\n", err, res)
-	}
 }

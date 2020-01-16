@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -15,18 +14,6 @@ import (
 	"strings"
 	"time"
 )
-
-func curl(url string) (string, error) {
-	res, err := http.Get(url)
-	body := ""
-	if res != nil && res.Body != nil {
-		var buf = []byte{}
-		buf, _ = ioutil.ReadAll(res.Body)
-		body = string(buf)
-		res.Body.Close()
-	}
-	return body, err
-}
 
 func main() {
 	log.SetFlags(log.Ltime)
@@ -112,19 +99,6 @@ func main() {
 		taskEnv = append(taskEnv, "K_URL="+tmpURL.String())
 		taskEnv = append(taskEnv, "K_METHOD="+r.Method)
 
-		index := r.Header.Get("K_JOB_INDEX")
-		jobID := r.Header.Get("K_JOB_ID")
-		done := false
-
-		if jobID != "" && index != "" {
-			go func() {
-				for !done {
-					updateJob(jobID, index, "") // Ping
-					time.Sleep(5 * time.Second)
-				}
-			}()
-		}
-
 		// Normally we loop until we want to stop reading from Queue
 		for i := 0; i < 5; i++ {
 			str := fmt.Sprintf("Hello: %s\n", time.Now().Format(time.UnixDate))
@@ -163,33 +137,14 @@ func main() {
 				log.Printf("Output:\n%s\n", string(outBuf.Bytes()))
 			}
 
-			time.Sleep(5 * time.Second)
+			time.Sleep(1 * time.Second)
 		}
-
-		done = true
 
 		// 1/2 the time fail
 		if time.Now().Unix()%2 == 0 {
-			updateJob(jobID, index, "pass")
-		} else {
-			updateJob(jobID, index, "fail")
+			w.WriteHeader(http.StatusInternalServerError)
 		}
 	})
 
 	http.ListenAndServe(":8080", nil)
-}
-
-func updateJob(jobID string, index string, status string) {
-	if jobID == "" || index == "" {
-		return
-	}
-	url := "http://jobcontroller.default.svc.cluster.local"
-	if status != "" {
-		status = "&status=" + status
-	}
-	cmd := fmt.Sprintf("%s/update?job=%s&index=%s%s", url, jobID, index, status)
-	res, err := curl(cmd)
-	if err != nil {
-		log.Printf("Curl: %s | %s\n", err, res)
-	}
 }

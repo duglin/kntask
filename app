@@ -12,7 +12,8 @@ fi
 
 # We're not streaming so show env vars
 echo "In '$0' (host:$(hostname)) ${K_JOB_INDEX:+(Index:$K_JOB_INDEX) }args: $*"
-env | sort | grep -v -e JOBCONTROLLER -e ^PULL -e ^TEST -e KUBE -e K_HEADERS
+# env | sort | grep -v -e JOBCONTROLLER -e ^PULL -e ^TEST -e KUBE -e K_HEADERS
+env | sort | grep -e ^K_  | grep -v K_HEADERS
 
 if [[ "$K_TYPE" == "pull" ]]; then
 	# Event pulling app so stdin is the event, just echo it
@@ -22,7 +23,7 @@ if [[ "$K_TYPE" == "pull" ]]; then
 fi
 
 # Sleep and randomly exit with non-0
-echo sleeping ${SLEEP:-1}
+echo -e sleeping ${SLEEP:-1}\\n
 sleep ${SLEEP:-1}
 
 # Fail 1/3 of the time if this is run as a batch job
