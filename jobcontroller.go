@@ -177,7 +177,6 @@ type Job struct {
 	NumJobs     int
 	Parallel    int
 	MaxRetries  int
-	Flavor      string
 	Envs        []string
 	Args        []string
 
@@ -280,7 +279,6 @@ func main() {
 		numJobs := r.URL.Query().Get("num")
 		parallel := r.URL.Query().Get("parallel")
 		retry := r.URL.Query().Get("retry")
-		flavor := r.URL.Query().Get("flavor")
 		envs := r.URL.Query()["env"]
 
 		var err error
@@ -330,7 +328,6 @@ func main() {
 			NumJobs:     1,
 			Parallel:    10,
 			MaxRetries:  0,
-			Flavor:      flavor,
 			Envs:        envs,
 
 			ID:    id,
