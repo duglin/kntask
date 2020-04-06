@@ -33,3 +33,7 @@ Other options:
 - new QP to create pod for each batch job instead of exec
 - new QP to create job for each batch job
   - main container could just sleep
+
+
+TODO:
+- add ability to specify which indexes should be run (or re-run) ?

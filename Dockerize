@@ -1,0 +1,76 @@
+#!/bin/bash
+
+set -e
+
+file="tmpDockerfile"
+hasGO=""
+first=1
+cmd=""
+image=""
+justDockerfile=""
+verbose=""
+
+rm -f "$file"
+
+for arg in $* ; do
+  [[ "$arg" == "-n" ]] && justDockerfile=1 && continue
+  [[ "$arg" == "-v" ]] && verbose=1 && continue
+  [[ "$arg" == *".go" ]] && hasGO=1
+  [[ -n "$first" ]] && cmd="/${arg%.go}"
+  first=""
+done
+
+if [[ -z "$cmd" ]]; then
+  echo "Missing an input file"
+  exit 1
+fi
+
+dotFile=".d-${cmd##*/}"
+rm -f "$dotFile"
+
+[[ -n "$hasGO" ]] && echo "FROM golang" >> $file
+[[ -z "$hasGO" ]] && echo "FROM ubuntu" >> $file
+
+for arg in $* ; do
+  [[ "$arg" == "-n" ]] && continue
+  [[ "$arg" == "-v" ]] && continue
+  if [[ "$arg" == *".go" ]]; then
+    echo "COPY $arg /src/" >> $file
+  else
+    echo "COPY $arg /" >> $file
+  fi
+done
+
+if [[ -n "$hasGO" ]]; then
+  echo "WORKDIR /src/" >> $file
+  echo "RUN go get -d ./..." >> $file
+fi
+
+for arg in $* ; do
+  [[ "$arg" != *".go" ]] && continue
+
+  echo "-> go build -o /dev/null $arg"
+  go build -o /dev/null $arg
+
+  # echo "RUN GO_EXTLINK_ENABLED=0 CGO_ENABLED=0 go build \\" >> $file
+  # echo "    -ldflags \"-w -extldflags -static\" \\" >> $file
+  # echo "    -tags netgo -installsuffix netgo \\" >> $file
+  # echo "    -o /${arg%.go} /src/$arg" >> $file
+  echo "RUN go build -o /${arg%.go} /src/$arg" >> $file
+done
+
+echo "CMD [ \"$cmd\" ]" >> $file
+image="duglin/${cmd##*/}"
+
+if [[ -n "$justDockerfile" || -n "{verbose}" ]]; then
+  cat $file
+fi
+
+# echo "Hit enter to build & push $image" && read a
+if [[ -z "$justDockerfile" ]]; then
+  docker build -t $image -f $file .
+  docker push $image
+  touch "$dotFile"
+fi
+
+rm $file

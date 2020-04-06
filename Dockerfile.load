@@ -1,7 +1,0 @@
-FROM golang
-COPY load.go /
-RUN GO_EXTLINK_ENABLED=0 CGO_ENABLED=0 go build \
-    -ldflags "-w -extldflags -static" \
-	-tags netgo -installsuffix netgo \
-	-o /app /load.go
-CMD /app

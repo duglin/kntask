@@ -17,17 +17,19 @@ import (
 # kn job create MYJOB --service=MYSERVICE --num=# --parallel=# --retry=# \
 #                     --env --wait/-w
 # kn job wait MYJOB
-# kn job status MYJOB
+# kn job get [ MYJOB ]
 */
 
 var jobName string
 var serviceName string
+var dependsOn string
 var num int
 var parallel int
 var retry int
 var envs []string
 var wait bool
 var args []string
+var all bool
 
 var host = "jobcontroller-default.kndev.us-south.containers.appdomain.cloud"
 
@@ -46,6 +48,13 @@ func curl(url string, headers [][2]string) (string, error) {
 		buf, _ = ioutil.ReadAll(res.Body)
 		body = string(buf)
 		res.Body.Close()
+	}
+	if err == nil && res.StatusCode/100 != 2 {
+		if body != "" {
+			err = fmt.Errorf("%s", body)
+		} else {
+			err = fmt.Errorf("Error status %d: %s", res.StatusCode, res.Status)
+		}
 	}
 	return body, err
 }
@@ -90,19 +99,25 @@ func createFunc(cmd *cobra.Command, args []string) {
 	for _, e := range envs {
 		u += fmt.Sprintf("&env=%s", url.QueryEscape(e))
 	}
+	if dependsOn != "" {
+		u += fmt.Sprintf("&dependson=%s", url.QueryEscape(dependsOn))
+	}
 
 	headers := [][2]string{}
 	for i, arg := range serviceArgs {
 		headers = append(headers, [2]string{fmt.Sprintf("ARG_%d", i+1), arg})
 	}
 
+	// fmt.Printf("URL: %s\n", u)
+
 	res, err := curl(u, headers)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
+	}
+
 	if len(res) > 0 {
 		fmt.Printf("%s", res)
-	}
-	if err != nil {
-		fmt.Printf("Error: %s\n", err)
-		os.Exit(1)
 	}
 
 	if wait {
@@ -111,7 +126,7 @@ func createFunc(cmd *cobra.Command, args []string) {
 }
 
 func waitFunc(cmd *cobra.Command, args []string) {
-	u := "http://" + host + "/status?job=" + args[0]
+	u := "http://" + host + "/get?job=" + args[0]
 
 	for {
 		res, err := curl(u, nil)
@@ -126,7 +141,7 @@ func waitFunc(cmd *cobra.Command, args []string) {
 		}{}
 		err = json.Unmarshal([]byte(res), &status)
 		if err != nil {
-			fmt.Printf("Error parsing(%s):\n%s\n%s\n", u, res, err)
+			fmt.Fprintf(os.Stderr, "Error parsing(%s):\n%s\n%s\n", u, res, err)
 			os.Exit(1)
 		}
 		if status.NumCompleted == status.NumJobs {
@@ -137,22 +152,47 @@ func waitFunc(cmd *cobra.Command, args []string) {
 
 }
 
-func statusFunc(cmd *cobra.Command, args []string) {
-	u := "http://" + host + "/status?"
+func getFunc(cmd *cobra.Command, args []string) {
+	u := "http://" + host + "/get"
 
 	if len(args) > 0 {
-		u += "job=" + args[0]
+		u += "?job=" + args[0]
 	}
 
 	res, err := curl(u, nil)
-	if len(res) > 0 {
-		fmt.Printf("%s", res)
-	}
 	if err != nil {
-		fmt.Printf("Error: %s\n", err)
+		fmt.Fprintf(os.Stderr, "%s\n", err)
 		os.Exit(1)
 	}
 
+	if len(res) > 0 {
+		fmt.Printf("%s", res)
+	}
+}
+
+func delFunc(cmd *cobra.Command, args []string) {
+	u := "http://" + host + "/delete?"
+
+	if len(args) > 0 {
+		u += "jobs=" + strings.Join(args, ",")
+	}
+
+	if all {
+		u += "all"
+	} else if len(args) == 0 {
+		fmt.Fprintf(os.Stderr, "Missing NAME or --all\n")
+		os.Exit(1)
+	}
+
+	res, err := curl(u, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
+	}
+
+	if len(res) > 0 {
+		fmt.Printf("%s", res)
+	}
 }
 
 func main() {
@@ -161,7 +201,7 @@ func main() {
 		"-o", `go-template={{index .data "ingress-subdomain" }}`)
 	output, err := Cmd.Output()
 	if err != nil {
-		fmt.Printf("Can't determine the URL of the cluster: %s\n", err)
+		fmt.Fprintf(os.Stderr, "Can't get the URL of the cluster: %s\n", err)
 		if len(output) > 0 {
 			fmt.Printf("%s\n", string(output))
 		}
@@ -190,22 +230,32 @@ func main() {
 		"Add env var(s) to service")
 	createCmd.Flags().BoolVarP(&wait, "wait", "w", false,
 		"Wait for Job to complete")
+	createCmd.Flags().StringVarP(&dependsOn, "dependson", "d", "",
+		"Dependent JOB[:fail|pass]")
 
 	waitCmd := &cobra.Command{
-		Use:   "wait MYJOB",
+		Use:   "wait NAME",
 		Short: "Wait for a Job to complete",
 		Args:  cobra.ExactArgs(1),
 		Run:   waitFunc,
 	}
 
-	statusCmd := &cobra.Command{
-		Use:   "status [ MYJOB ]",
-		Short: "Get the status of a Job, or all Jobs",
+	getCmd := &cobra.Command{
+		Use:   "get [ NAME ]",
+		Short: "Get the status of a Job, or list all Jobs",
 		Args:  cobra.MaximumNArgs(1),
-		Run:   statusFunc,
+		Run:   getFunc,
 	}
 
+	delCmd := &cobra.Command{
+		Use:     "del [ NAME ]",
+		Aliases: []string{"delete"},
+		Short:   "Delete a Job or delet all jobs with --all",
+		Run:     delFunc,
+	}
+	delCmd.Flags().BoolVarP(&all, "all", "", false, "Delete all Jobs")
+
 	cmd := &cobra.Command{Use: fmt.Sprintf("kn%cjob", 011)}
-	cmd.AddCommand(createCmd, waitCmd, statusCmd)
+	cmd.AddCommand(createCmd, waitCmd, getCmd, delCmd)
 	cmd.Execute()
 }

@@ -5,5 +5,8 @@
 load
 jobcontroller
 kn-job
+kn-exec
 client
 *mac
+.d-*
+old

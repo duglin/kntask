@@ -1,0 +1,16 @@
+#!/bin/bash
+
+echo "Hi from $0 !"
+
+# Pausing makes for better scaling demos
+sleep ${SLEEP:-1}
+
+# Show some info if we have any
+test -n "$*" && echo  "Args: \"$*\""
+test -n "$K_JOB_INDEX" && echo "Index: $K_JOB_INDEX"
+
+# Fail 1/3 of the time if this is a batch job (and PASS isn't set)
+if [[ -z "$PASS" && -n "$K_JOB_NAME" ]] && (( $RANDOM % 3 == 0 )); then
+  echo "Failing..."
+  exit 1
+fi

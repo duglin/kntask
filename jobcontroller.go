@@ -171,14 +171,20 @@ func (t *Service) Fail(reason string) {
 }
 
 type Job struct {
-	ID          string
-	Name        string
+	ID     string
+	Name   string
+	Status string // PENDING, RUNNING, PASS, FAIL, DELETING
+
+	DependsOn   string `json:",omitempty"` // JobID
+	DependsWhen string `json:",omitempty"` // PASS, FAIL, ANY
+	DependsType string `json:",omitempty"` // ALL, INDEX
+
 	ServiceName string
 	NumJobs     int
 	Parallel    int
 	MaxRetries  int
-	Envs        []string
-	Args        []string
+	Envs        []string `json:",omitempty"`
+	Args        []string `json:",omitempty"`
 
 	mutex        sync.Mutex
 	Start        time.Time
@@ -189,8 +195,40 @@ type Job struct {
 	Services     []*Service
 }
 
-var Jobs = map[string]*Job{}         // ID->*Job
-var Name2JobID = map[string]string{} // JobName->JobID
+var Jobs = map[string]*Job{}     // ID->*Job
+var Name2Job = map[string]*Job{} // JobName->*Job
+
+var JobsMutex = sync.Mutex{}
+
+func AddJob(job *Job) {
+	JobsMutex.Lock()
+	defer JobsMutex.Unlock()
+
+	Jobs[job.ID] = job
+	Name2Job[job.Name] = job
+}
+
+func DelJob(job *Job) {
+	JobsMutex.Lock()
+	defer JobsMutex.Unlock()
+
+	delete(Jobs, job.ID)
+	delete(Name2Job, job.Name)
+}
+
+func GetJobByID(id string) *Job {
+	JobsMutex.Lock()
+	defer JobsMutex.Unlock()
+
+	return Jobs[id]
+}
+
+func GetJobByName(name string) *Job {
+	JobsMutex.Lock()
+	defer JobsMutex.Unlock()
+
+	return Name2Job[name]
+}
 
 func (j *Job) ServiceStarted() {
 	j.mutex.Lock()
@@ -211,19 +249,45 @@ func (j *Job) ServiceEnded(pass bool) {
 
 	if j.NumCompleted == j.NumJobs {
 		j.End = time.Now()
+
+		if j.NumPassed == j.NumJobs {
+			j.Status = "PASS"
+		} else {
+			j.Status = "FAIL"
+		}
 	}
+}
+
+func (j *Job) MarkDelete() {
+	j.Status = "DELETING"
+}
+
+func (j *Job) Delete() {
+	DelJob(j)
 }
 
 func Controller() {
 	for {
 		for _, job := range Jobs {
+			now := time.Now()
+
 			if job.NumCompleted == job.NumJobs {
 				// All done so delete it
-				// delete(Jobs, jID)
+				// job.MarkDelete()
+			}
+
+			if job.Status == "DELETING" {
+				// TODO: check for dependencies
+				job.Delete()
+				continue
+			}
+
+			if job.Status == "PENDING" {
+				job.Status = "RUNNING"
+				job.Start = now
 			}
 
 			// Look for timed-out jobs
-			now := time.Now()
 			for _, service := range job.Services {
 				// Skip jobs that are not running
 				if service.ping.IsZero() {
@@ -276,6 +340,8 @@ func main() {
 	http.HandleFunc("/create", func(w http.ResponseWriter, r *http.Request) {
 		jobName := r.URL.Query().Get("job")
 		serviceName := r.URL.Query().Get("service")
+		dependsOn := r.URL.Query().Get("dependson")
+		dependsWhen := "PASS"
 		numJobs := r.URL.Query().Get("num")
 		parallel := r.URL.Query().Get("parallel")
 		retry := r.URL.Query().Get("retry")
@@ -288,19 +354,14 @@ func main() {
 			jobName = id
 		}
 
-		if jobID, ok := Name2JobID[jobName]; ok {
+		// If job by this name already exists then it's an error
+		if job := GetJobByName(jobName); job != nil {
 			// For now if it already exists then delete it and create
 			// a new one with the same name, if it's done! If it's running
 			// then stop them from killing it by returning an error
-			job := Jobs[jobID]
-			if job.NumCompleted != job.NumJobs {
-				w.WriteHeader(http.StatusBadRequest)
-				w.Write([]byte("Job '" + jobName + "' already exists and is running\n"))
-				return
-			}
-
-			delete(Jobs, jobID)
-			delete(Name2JobID, jobName)
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("Job '" + jobName + "' already exists\n"))
+			return
 		}
 
 		args := map[int]string{}
@@ -322,16 +383,59 @@ func main() {
 			return
 		}
 
+		if dependsOn != "" {
+			// JOB[:pass|fail]
+			parts := strings.SplitN(dependsOn, ":", 2)
+			when := ""
+
+			parts[0] = strings.TrimSpace(parts[0])
+			if parts[0] == "" {
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte("Missing 'job' on 'dependson'\n"))
+				return
+			}
+
+			job := GetJobByID(parts[0])
+
+			if job == nil {
+				job = GetJobByName(parts[0])
+				if job == nil || job.Status == "DELETING" {
+					w.WriteHeader(http.StatusBadRequest)
+					w.Write([]byte("Can't find job '" + parts[0] + "'\n"))
+					return
+				}
+			}
+
+			if len(parts) > 1 {
+				when = strings.ToUpper(strings.TrimSpace(parts[1]))
+				if when != "" && when != "PASS" && when != "FAIL" {
+					w.WriteHeader(http.StatusBadRequest)
+					w.Write([]byte("Invalid dependency type '" + when + "'\n"))
+					return
+				}
+				if when == "" {
+					when = "PASS"
+				}
+			}
+			dependsOn = job.ID
+			dependsWhen = when
+		}
+
 		job := Job{
-			Name:        jobName,
+			Name:   jobName,
+			Status: "PENDING",
+
+			DependsOn:   dependsOn,
+			DependsWhen: dependsWhen,
+
 			ServiceName: serviceName,
 			NumJobs:     1,
 			Parallel:    10,
 			MaxRetries:  0,
 			Envs:        envs,
 
-			ID:    id,
-			Start: time.Now(),
+			ID: id,
+			// Start: time.Now(),
 		}
 
 		if numJobs != "" {
@@ -390,43 +494,35 @@ func main() {
 			job.Args = append(job.Args, value)
 		}
 
-		Jobs[job.ID] = &job
-		Name2JobID[job.Name] = job.ID
+		AddJob(&job)
 
-		r.Header.Add("JOB-NAME", job.Name)
-		r.Header.Add("JOB-ID", job.ID)
+		w.Header().Add("JOB-NAME", job.Name)
+		w.Header().Add("JOB-ID", job.ID)
 	})
 
-	http.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/get", func(w http.ResponseWriter, r *http.Request) {
 		jobName := r.URL.Query().Get("job")
-		jobID := ""
+		buf := []byte{}
 
 		if jobName != "" {
-			if jobID = Name2JobID[jobName]; jobID == "" {
-				w.WriteHeader(http.StatusBadRequest)
-				w.Write([]byte("Can't find job '" + jobName + "'\n"))
+			job := GetJobByName(jobName)
+			if job == nil {
+				job = GetJobByID(jobName)
+			}
+			if job == nil {
+				w.WriteHeader(http.StatusNotFound)
+				w.Write([]byte("Can't find '" + jobName + "'\n"))
 				return
 			}
-		}
-
-		buf := []byte{}
-		if jobID == "" {
-			buf, _ = json.MarshalIndent(Jobs, "", "  ")
+			buf, _ = json.MarshalIndent(job, "", "  ")
 		} else {
-			job, ok := Jobs[jobID]
-			if !ok {
-				w.WriteHeader(http.StatusBadRequest)
-				w.Write([]byte("Can't find job '" + jobName + "'\n"))
-				return
+			jobs := []*Job{}
+			for _, job := range Jobs {
+				jobs = append(jobs, job)
 			}
-			copyJob := *job
-
-			buf, _ = json.MarshalIndent(&copyJob, "", "  ")
-			if copyJob.NumCompleted == copyJob.NumJobs {
-				delete(Jobs, jobID)
-				delete(Name2JobID, jobName)
-			}
+			buf, _ = json.MarshalIndent(jobs, "", "  ")
 		}
+
 		w.Write(buf)
 		w.Write([]byte("\n"))
 	})
@@ -436,8 +532,8 @@ func main() {
 		serviceIndex := r.URL.Query().Get("index")
 		serviceStatus := r.URL.Query().Get("status")
 
-		job, ok := Jobs[jobID]
-		if !ok {
+		job := GetJobByID(jobID)
+		if job == nil {
 			w.WriteHeader(http.StatusBadRequest)
 			w.Write([]byte("Can't find job '" + jobID + "'\n"))
 			return
@@ -465,6 +561,40 @@ func main() {
 		} else {
 			log.Printf("Got PING %s %d\n", jobID, index)
 			job.Services[index].TouchPing()
+		}
+	})
+
+	http.HandleFunc("/delete", func(w http.ResponseWriter, r *http.Request) {
+		jobNames := r.URL.Query().Get("jobs")
+		_, ok := r.URL.Query()["all"]
+
+		if ok {
+			if jobNames != "" {
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte("Can't specify 'all' and a job\n"))
+				return
+			}
+			for _, job := range Jobs {
+				job.MarkDelete()
+			}
+			return
+		}
+
+		jobs := []*Job{}
+		for _, jobName := range strings.Split(jobNames, ",") {
+			job := GetJobByName(jobName)
+			if job == nil {
+				job = GetJobByID(jobName)
+			}
+			if job == nil {
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte("Can't find job '" + jobName + "'\n"))
+				return
+			}
+			jobs = append(jobs, job)
+		}
+		for _, job := range jobs {
+			job.MarkDelete()
 		}
 	})
 

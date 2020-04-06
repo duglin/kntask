@@ -12,16 +12,15 @@ function klog() {
 
 set -e
 
-kn job status job1 > /dev/null 2>&1 || true
-kn job status job2 > /dev/null 2>&1 || true
-kn service delete test > /dev/null 2>&1 || true
+kn job delete --all > /dev/null 2>&1 || true
+kn service delete test test1 > /dev/null 2>&1 || true
 
 comment "Our app:"
-doit cat app
+doit cat app-hi
 comment "Notice it will fail 1/3 of the time"
 
 comment "Deploy the service (task)"
-doit kn service create test --image duglin/app -l type=task
+doit kn service create test --image duglin/app-hi -l type=task
 
 comment "Now create our batch job (run service 5 times, no retries)"
 doit kn job create job1 --service=test --num=5
@@ -47,17 +46,19 @@ doit time kn job create job3 --service=test --num=50 --retry=10 --parallel=10 --
 doit kubectl get pods \| grep -e -2-
 
 doit kn service update test --concurrency-limit=4
-doit time kn job create job3 --service=test --num=50 --retry=10 --parallel=10 --env PASS=true -w
-# doit time kn job wait job3
+doit time kn job create job4 --service=test --num=50 --retry=10 --parallel=10 --env PASS=true -w
+# doit time kn job wait job4
 doit kubectl get pods \| grep -e -3-
 
 comment "Now do a job with ALL possible flags"
-doit kn service create test1 --image=duglin/app -l type=task
-doit kn job create job4 --service=test1 \
+doit kn service create test1 --image duglin/app-hi -l type=task
+doit kn job create job5 --service=test1 --num=50 \
   --env=PASS=true --retry=2 --parallel=5 --wait -- arg1 arg2
+wait ! 'kubectl get pods | grep Creating'
 doit --noexec klog test1
 kubectl logs --tail=-1 -l serving.knative.dev/service=test1 -c user-container |
  sed -n 'H; /Output:/h; ${g;p;}'
 comment "Notice the env vars and the cmd line args that were passed in"
 
 kn service delete test test1
+kn job delete --all
