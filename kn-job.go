@@ -145,7 +145,7 @@ func waitFunc(cmd *cobra.Command, args []string) {
 			os.Exit(1)
 		}
 		if status.NumCompleted == status.NumJobs {
-			fmt.Printf("%s", res)
+			// fmt.Printf("%s", res)
 			break
 		}
 	}

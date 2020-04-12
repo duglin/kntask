@@ -61,7 +61,7 @@ doit kn job create job1 -s pulltest -w --retry=-1
 doit kn service create stream --image duglin/app-echo -l type=taask
 URL=$(tail -1 out)
 
-comment --paues "Demo streaming"
+comment --pause "Demo streaming"
 doit --ignorerc timeout 10s ./client ${URL}
 
 comment --pause "Clean..."
