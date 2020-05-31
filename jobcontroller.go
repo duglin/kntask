@@ -10,9 +10,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	proxy "github.com/btbd/proxy/client"
 )
 
-var restartTimeout = 10 * time.Second
+var restartTimeout = 30 * time.Second
 
 type Service struct {
 	Index    int
@@ -64,11 +66,14 @@ func (t *Service) Run(isRestart bool) {
 		}
 
 		// Append the "async" query parameter
-		if query != "" {
-			query += "&async"
-		} else {
-			query += "?async"
-		}
+		/*
+			req.Header.Add("Prefer", "respond-async")
+			if query != "" {
+				query += "&async"
+			} else {
+				query += "?async"
+			}
+		*/
 
 		url := fmt.Sprintf("http://%s.default.svc.cluster.local%s%s",
 			host, path, query)
@@ -76,6 +81,7 @@ func (t *Service) Run(isRestart bool) {
 		req.Header.Add("K_JOB_NAME", job.Name)
 		req.Header.Add("K_JOB_ID", job.ID)
 		req.Header.Add("K_JOB_INDEX", strconv.Itoa(t.Index))
+		req.Header.Add("K_JOB_SIZE", strconv.Itoa(job.NumJobs))
 		req.Header.Add("K_JOB_ATTEMPT", strconv.Itoa(t.Attempts))
 
 		for _, env := range job.Envs {
@@ -87,7 +93,8 @@ func (t *Service) Run(isRestart bool) {
 		}
 
 		log.Printf("Calling:%s\n", url)
-		res, err := (&http.Client{}).Do(req)
+		// res, err := (&http.Client{}).Do(req)
+		res, err := Proxy.Do(&http.Client{}, req)
 
 		body := ""
 		sc := 0
@@ -333,9 +340,26 @@ func curl(url string) (string, error) {
 	return body, err
 }
 
+var Proxy *proxy.Proxy
+
+const ProxyURL = "http://proxy.default.svc.cluster.local"
+
+func SetupProxy() {
+	var err error
+	Proxy, err = proxy.NewWithConfig(ProxyURL, proxy.Config{
+		NumberOfSenders: 1,
+		DebugLevel:      1,
+		DebugPrint:      log.Printf,
+	})
+	if err != nil {
+		panic(err)
+	}
+}
+
 func main() {
 	log.SetFlags(log.Ltime)
 	go Controller()
+	go SetupProxy()
 
 	http.HandleFunc("/create", func(w http.ResponseWriter, r *http.Request) {
 		jobName := r.URL.Query().Get("job")

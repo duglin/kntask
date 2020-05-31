@@ -1,3 +1,5 @@
+export REPOSITORY ?= duglin
+
 all: .d-taskmgr .d-app .d-app-hi .d-app-echo .d-jobcontroller load kn-job \
 	client kn-exec
 
@@ -13,24 +15,31 @@ client: client.go
 
 .d-taskmgr: taskmgr.go pullmgr.go
 	./Dockerize taskmgr.go pullmgr.go
+	touch .d-taskmgr
 
 .d-jobcontroller: jobcontroller.go
 	./Dockerize jobcontroller.go
+	touch .d-jobcontroller
 
 .d-app: app
 	./Dockerize app
+	touch .d-app
 
 .d-app-hi: app-hi
 	./Dockerize app-hi
+	touch .d-app-hi
 
 .d-app-echo: app-echo
 	./Dockerize app-echo
+	touch .d-app-echo
 
 run: .app
 	docker run -ti -p 8080:8080 duglin/app
 
 deploy: .d-jobcontroller .d-taskmgr .d-app
 	kubectl delete ksvc --all > /dev/null 2>&1 || true
+	sleep 2
+	kubectl apply -f proxy.yaml
 	sleep 2
 	kn service create jobcontroller --image duglin/jobcontroller --min-scale=1
 	./prep
@@ -54,3 +63,4 @@ kn-exec: kn-exec.go
 clean:
 	rm -f jobcontroller load taskmgr kn-job client *.mac kn-exec .d-*
 	kubectl delete ksvc --all > /dev/null 2>&1 || true
+	kubectl delete -f proxy.yaml

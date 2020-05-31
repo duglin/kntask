@@ -57,8 +57,9 @@ doit --ignorerc "timeout 10 kubectl logs -f --tail=-1 -l serving.knative.dev/ser
 
 comment "Run as a job so we can ask for retries (in this case until it passes)"
 doit kn job create job1 -s pulltest -w --retry=-1
+doit kn job get job1
 
-doit kn service create stream --image duglin/app-echo -l type=taask
+doit kn service create stream --image duglin/app-echo -l type=task
 URL=$(tail -1 out)
 
 comment --pause "Demo streaming"

@@ -3,18 +3,39 @@
 set -e
 
 file="tmpDockerfile"
+trap "rm -f $file" EXIT
+
 hasGO=""
 first=1
 cmd=""
 image=""
 justDockerfile=""
+justBuild=""
+justLocal=""
 verbose=""
+echoImage=""
+noCache=""
+from=""
+static=""
+
+REPOSITORY=${REPOSITORY:-ibmcom}
 
 rm -f "$file"
+myArgs=()
 
 for arg in $* ; do
-  [[ "$arg" == "-n" ]] && justDockerfile=1 && continue
-  [[ "$arg" == "-v" ]] && verbose=1 && continue
+  [[ "$arg" == "-b"  ]] && justBuild=1 && continue
+  [[ "$arg" == "-c"  ]] && noCache="--no-cache" && continue
+  [[ "$arg" == "-e"  ]] && echoImage=1 && continue
+  [[ "$arg" == "-i"* ]] && image="${arg:2}" && continue
+  [[ "$arg" == "-f"* ]] && from="${arg:2}" && continue
+  [[ "$arg" == "-l"  ]] && justLocal=1 && continue
+  [[ "$arg" == "-n"  ]] && justDockerfile=1 && continue
+  [[ "$arg" == "-s"  ]] && static=1 && continue
+  [[ "$arg" == "-v"  ]] && verbose=1 && continue
+
+  myArgs+=( "$arg" )
+
   [[ "$arg" == *".go" ]] && hasGO=1
   [[ -n "$first" ]] && cmd="/${arg%.go}"
   first=""
@@ -25,18 +46,20 @@ if [[ -z "$cmd" ]]; then
   exit 1
 fi
 
-dotFile=".d-${cmd##*/}"
-rm -f "$dotFile"
-
+[[ -z "$hasGO" ]] && echo "FROM ${from:-ubuntu}" >> $file
 [[ -n "$hasGO" ]] && echo "FROM golang" >> $file
-[[ -z "$hasGO" ]] && echo "FROM ubuntu" >> $file
 
-for arg in $* ; do
-  [[ "$arg" == "-n" ]] && continue
-  [[ "$arg" == "-v" ]] && continue
+for arg in "${myArgs[@]}" ; do
+  # [[ "$arg" == "-n" ]] && continue
+  # [[ "$arg" == "-v" ]] && continue
+
+  if [[ "$arg" == *".sh" ]]; then
+    grep "^#Dockerize " "$arg" | sed "s/.^#Dockerize *//" >> $file
+  fi
+
   if [[ "$arg" == *".go" ]]; then
     echo "COPY $arg /src/" >> $file
-  else
+  elif [[ -z "$hasGO" ]]; then # || -z "$from" ]]; then
     echo "COPY $arg /" >> $file
   fi
 done
@@ -46,31 +69,62 @@ if [[ -n "$hasGO" ]]; then
   echo "RUN go get -d ./..." >> $file
 fi
 
-for arg in $* ; do
+for arg in "${myArgs[@]}" ; do
   [[ "$arg" != *".go" ]] && continue
 
   echo "-> go build -o /dev/null $arg"
+
   go build -o /dev/null $arg
 
-  # echo "RUN GO_EXTLINK_ENABLED=0 CGO_ENABLED=0 go build \\" >> $file
-  # echo "    -ldflags \"-w -extldflags -static\" \\" >> $file
-  # echo "    -tags netgo -installsuffix netgo \\" >> $file
-  # echo "    -o /${arg%.go} /src/$arg" >> $file
-  echo "RUN go build -o /${arg%.go} /src/$arg" >> $file
+  if [[ -n "$static" ]]; then
+    echo "RUN GO_EXTLINK_ENABLED=0 CGO_ENABLED=0 go build \\" >> $file
+    echo "    -ldflags \"-w -extldflags -static\" \\" >> $file
+    echo "    -tags netgo -installsuffix netgo \\" >> $file
+    echo "    -o /${arg%.go} /src/$arg" >> $file
+  else
+    echo "RUN go build -o /${arg%.go} /src/$arg" >> $file
+  fi
 done
 
-echo "CMD [ \"$cmd\" ]" >> $file
-image="duglin/${cmd##*/}"
+if [[ -n "$hasGO" && -n "$from" ]]; then
+  echo "" >> $file
+  echo "FROM $from" >> $file
+  for arg in "${myArgs[@]}" ; do
+    if [[ "$arg" == *".sh" ]]; then
+      grep "^#Dockerize " "$arg" | sed "s/.^#Dockerize *//" >> $file
+    fi
 
-if [[ -n "$justDockerfile" || -n "{verbose}" ]]; then
-  cat $file
+    if [[ "$arg" == *".go" ]]; then
+      echo "COPY --from=0 /${arg%.go} /${arg%.go}" >> $file
+    elif [[ -z "$hasGo" || -z "$from" ]] ; then
+      # [[ "$arg" == "-n" ]] && continue
+      # [[ "$arg" == "-v" ]] && continue
+      echo "COPY $arg /" >> $file
+    fi
+  done
 fi
 
-# echo "Hit enter to build & push $image" && read a
-if [[ -z "$justDockerfile" ]]; then
-  docker build -t $image -f $file .
-  docker push $image
-  touch "$dotFile"
+if [[ -z "$justBuild" ]]; then
+  echo "CMD [ \"$cmd\" ]" >> $file
+  if [[ -z "$image" ]]; then
+    image=${cmd##*/}
+    image=${image%%.*}
+    image="$REPOSITORY/$image"
+  fi
+
+  if [[ -n "$justDockerfile" || -n "{verbose}" ]]; then
+    cat $file
+  fi
+
+  # echo "Hit enter to build & push $image" && read a
+  if [[ -z "$justDockerfile" ]]; then
+    docker build $noCache -t $image -f $file .
+    if [[ -z "$justLocal" ]]; then
+      docker push $image
+    fi
+  fi
+
+  [[ -n "$echoImage" ]] && echo $image
 fi
 
 rm $file
