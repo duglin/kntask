@@ -110,8 +110,13 @@ func (t *Service) Run(isRestart bool) {
 		log.Printf("curl res(%d): %s\n", sc, body)
 
 		if err != nil {
-			log.Printf("Curl res: %s\n", body)
 			t.Fail("Error talking to service: " + err.Error())
+		} else if sc/100 != 2 {
+			str := res.Status
+			if body != "" {
+				str += " - " + body
+			}
+			t.Fail("Error talking to service: " + str)
 		}
 	}()
 }

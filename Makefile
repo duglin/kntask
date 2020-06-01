@@ -36,7 +36,7 @@ client: client.go
 run: .app
 	docker run -ti -p 8080:8080 duglin/app
 
-deploy: .d-jobcontroller .d-taskmgr .d-app
+deploy: all
 	kubectl delete ksvc --all > /dev/null 2>&1 || true
 	sleep 2
 	kubectl apply -f proxy.yaml
