@@ -1,0 +1,4 @@
+#!/bin/sh
+# env | sort
+echo CMD: $0 $*
+jq .

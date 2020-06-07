@@ -7,7 +7,7 @@ comment We start with a simple app
 doit cat app-hi
 
 comment --pause And the Dockerfile used to build its image
-doit --showcmd="cat Dockerfile.app" ./Dockerize -n app-hi
+doit --showcmd="cat Dockerfile.app" Dockerize -n app-hi
 
 comment --pause "Deploy it... (as a 'task')"
 doit kn service create test --image duglin/app-hi -l type=task

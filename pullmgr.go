@@ -26,10 +26,7 @@ func main() {
 
 		// os.Args[1] is a JSON serialization of the ENTRYPOINT cmd
 		if len(os.Args) > 1 {
-			if err := json.Unmarshal([]byte(os.Args[1]), &taskCmd); err != nil {
-				fmt.Printf("Error parsing cmd: %s\n", err)
-				return
-			}
+			taskCmd = os.Args[1:]
 		}
 
 		for name, values := range r.Header {

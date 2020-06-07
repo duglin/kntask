@@ -1,7 +1,6 @@
 export REPOSITORY ?= duglin
 
-all: .d-taskmgr .d-app .d-app-hi .d-app-echo .d-jobcontroller load kn-job \
-	client kn-exec
+all: .d-taskmgr .d-app .d-jobcontroller load kn-job client kn-exec
 
 taskmgr: taskmgr.go
 	GO_EXTLINK_ENABLED=0 CGO_ENABLED=0 go build \
@@ -14,26 +13,22 @@ client: client.go
 	# GOOS=darwin GOARCH=amd64 go build -o client.mac load.go
 
 .d-taskmgr: taskmgr.go pullmgr.go
-	./Dockerize taskmgr.go pullmgr.go
+	Dockerize -s taskmgr.go pullmgr.go
 	touch .d-taskmgr
 
 .d-jobcontroller: jobcontroller.go
-	./Dockerize jobcontroller.go
+	Dockerize jobcontroller.go
 	touch .d-jobcontroller
 
-.d-app: app
-	./Dockerize app
+.d-app: app app-hi app-echo eventer
+	Dockerize app
+	Dockerize app-hi
+	Dockerize app-echo
+	Dockerize -iduglin/eventer-c -m -fduglin/jq eventer
+	Dockerize -iduglin/eventer-e -fduglin/jq eventer
 	touch .d-app
 
-.d-app-hi: app-hi
-	./Dockerize app-hi
-	touch .d-app-hi
-
-.d-app-echo: app-echo
-	./Dockerize app-echo
-	touch .d-app-echo
-
-run: .app
+run: .d-app
 	docker run -ti -p 8080:8080 duglin/app
 
 deploy: all

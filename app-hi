@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "Hi from $0 !"
+echo "Hi from $0 ! - Host: $(hostname)"
 
 # Pausing makes for better scaling demos
 sleep ${SLEEP:-1}

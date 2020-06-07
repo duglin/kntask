@@ -23,7 +23,7 @@ func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// log.Printf("Got a request\n")
 
-		taskCmd := []string{"/app"}
+		taskCmd := []string{}
 		taskEnv := os.Environ()
 
 		doStream := false
@@ -37,12 +37,7 @@ func main() {
 
 		// os.Args[1] is a JSON serialization of the ENTRYPOINT cmd
 		if len(os.Args) > 1 {
-			if err := json.Unmarshal([]byte(os.Args[1]), &taskCmd); err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				w.Write([]byte(fmt.Sprintf("Error parsing cmd: %s\n", err)))
-				fmt.Printf("Error parsing cmd: %s\n", err)
-				return
-			}
+			taskCmd = os.Args[1:]
 		}
 
 		for name, values := range r.Header {
@@ -65,9 +60,15 @@ func main() {
 				continue
 			}
 
-			// All others are just copied - only assume only one value
+			// Grab all K_ ones - only assume only one value
 			if strings.HasPrefix(name, "K_") {
 				taskEnv = append(taskEnv, name+"="+values[0])
+			}
+
+			// Grab all CloudEvent ones - only assume only one value
+			if strings.HasPrefix(name, "CE-") {
+				taskEnv = append(taskEnv,
+					strings.ReplaceAll(name, "-", "_")+"="+values[0])
 			}
 		}
 
@@ -102,6 +103,12 @@ func main() {
 				break
 			}
 			taskCmd = append(taskCmd, arg[0])
+		}
+
+		if len(taskCmd) == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("Missing command to run\n"))
+			return
 		}
 
 		tmpURL := r.URL
