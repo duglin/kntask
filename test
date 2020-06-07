@@ -9,74 +9,92 @@ set -e
 
 kn service delete eventer > /dev/null 2>&1 || true
 
-kne="kn service create eventer -l type=task --min-scale=1 --image "
+kne="kn service create eventer -l type=task --image "
 
 # Uses ENTRYPOINT from image (no CMD)
 doit $kne duglin/eventer-e
 URL=$(tail -1 out)
 doit curl -s $URL -d '{}'
 must grep \"^CMD: /eventer$\" out
-doit kn service delete eventer
+must grep \"^{}$\" out
+must '[[ $(cat out | wc -l) == 2 ]]'
+doit kn service delete eventer && sleep 1
 
 # Uses CMD from image (no ENTRYPOINT)
 doit $kne duglin/eventer-c
 URL=$(tail -1 out)
 doit curl -s $URL -d '{}'
 must grep \"^CMD: /eventer$\" out
-doit kn service delete eventer
+must grep \"^{}$\" out
+must '[[ $(cat out | wc -l) == 2 ]]'
+doit kn service delete eventer && sleep 1
 
 # Override ENTRYPOINT
 doit $kne duglin/eventer-e --cmd /tmp/../eventer
 URL=$(tail -1 out)
 doit curl -s $URL -d '{}'
 must grep \"^CMD: /tmp/../eventer$\" out
-doit kn service delete eventer
+must grep \"^{}$\" out
+must '[[ $(cat out | wc -l) == 2 ]]'
+doit kn service delete eventer && sleep 1
 
 # Use ENTRYPOINT, CMD from image should be ignored
 doit $kne duglin/eventer-c --cmd /tmp/../eventer
 URL=$(tail -1 out)
 doit curl -s $URL -d '{}'
 must grep \"^CMD: /tmp/../eventer$\" out
-doit kn service delete eventer
+must grep \"^{}$\" out
+must '[[ $(cat out | wc -l) == 2 ]]'
+doit kn service delete eventer && sleep 1
 
 # Use ENTRYPOINT from image and use cmd line ARG
 doit $kne duglin/eventer-e --arg /tmp/../eventer
 URL=$(tail -1 out)
 doit curl -s $URL -d '{}'
 must grep \"^CMD: /eventer /tmp/../eventer$\" out
-doit kn service delete eventer
+must grep \"^{}$\" out
+must '[[ $(cat out | wc -l) == 2 ]]'
+doit kn service delete eventer && sleep 1
 
 # No ENTRYPOINT, override CMD from image and use that as exe
 doit $kne duglin/eventer-c --arg /tmp/../eventer
 URL=$(tail -1 out)
 doit curl -s $URL -d '{}'
 must grep \"^CMD: /tmp/../eventer$\" out
-doit kn service delete eventer
+must grep \"^{}$\" out
+must '[[ $(cat out | wc -l) == 2 ]]'
+doit kn service delete eventer && sleep 1
 
 # Override ENTRYPOINT and add ARGs
 doit $kne duglin/eventer-e --cmd /tmp/../eventer --arg a1
 URL=$(tail -1 out)
 doit curl -s $URL -d '{}'
 must grep \"^CMD: /tmp/../eventer a1$\" out
-doit kn service delete eventer
+must grep \"^{}$\" out
+must '[[ $(cat out | wc -l) == 2 ]]'
+doit kn service delete eventer && sleep 1
 
 # Use specified CMD and ARG from cmd line, nothing from image
 doit $kne duglin/eventer-c --cmd /tmp/../eventer --arg a1
 URL=$(tail -1 out)
 doit curl -s $URL -d '{}'
 must grep \"^CMD: /tmp/../eventer a1$\" out
-doit kn service delete eventer
+must grep \"^{}$\" out
+must '[[ $(cat out | wc -l) == 2 ]]'
+doit kn service delete eventer && sleep 1
 
 # Same as previous but with a common usecase
 doit $kne busybox --cmd=/bin/sh --arg=-c --arg=\"echo hi\"
 URL=$(tail -1 out)
 doit curl -s $URL
 must grep \"^hi$\" out
-doit kn service delete eventer
+must '[[ $(cat out | wc -l) == 1 ]]'
+doit kn service delete eventer && sleep 1
 
 # Same as a previous one but with a common usecase
 doit $kne busybox --arg=/bin/cat
 URL=$(tail -1 out)
 doit curl -s $URL -d 'hello'
 must grep \"^hello$\" out
-doit kn service delete eventer
+must '[[ $(cat out | wc -l) == 0 ]]'
+doit kn service delete eventer && sleep 1
