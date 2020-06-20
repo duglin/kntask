@@ -52,7 +52,7 @@ doit "curl -s ${URL}/queueA" # ?async"
 doit "kubectl logs --tail=-1 -l serving.knative.dev/service=pulltest -c user-container"
 
 comment "Run but don't wait"
-doit "curl -s ${URL}/queueB?async"
+doit "curl -s ${URL}/queueB -HPrefer:respond-async"
 doit --ignorerc "timeout 10 kubectl logs -f --tail=-1 -l serving.knative.dev/service=pulltest -c user-container"
 
 comment "Run as a job so we can ask for retries (in this case until it passes)"

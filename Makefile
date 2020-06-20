@@ -34,8 +34,8 @@ run: .d-app
 deploy: all
 	kubectl delete ksvc --all > /dev/null 2>&1 || true
 	sleep 2
-	kubectl apply -f proxy.yaml
-	sleep 2
+	# kubectl apply -f proxy.yaml
+	# sleep 2
 	kn service create jobcontroller --image duglin/jobcontroller --min-scale=1
 	./prep
 	# kubectl create -f s.yaml > /dev/null 2>&1

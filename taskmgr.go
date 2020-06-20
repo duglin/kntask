@@ -229,7 +229,8 @@ func main() {
 			if !doStream {
 				w.Write(outBuf.Bytes())
 			}
-			log.Printf("Output:\n%s\n", string(outBuf.Bytes()))
+			// log.Printf("Output:\n%s\n", string(outBuf.Bytes()))
+			os.Stdout.Write(outBuf.Bytes())
 		}
 	})
 

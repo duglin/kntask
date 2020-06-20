@@ -65,14 +65,13 @@ func (t *Service) Run(isRestart bool) {
 			path = "/" + parts[1]
 		}
 
-		// Append the "async" query parameter
 		/*
-			req.Header.Add("Prefer", "respond-async")
-			if query != "" {
-				query += "&async"
-			} else {
-				query += "?async"
-			}
+			// Append the "async" query parameter
+				if query != "" {
+					query += "&async"
+				} else {
+					query += "?async"
+				}
 		*/
 
 		url := fmt.Sprintf("http://%s.default.svc.cluster.local%s%s",
@@ -84,6 +83,9 @@ func (t *Service) Run(isRestart bool) {
 		req.Header.Add("K_JOB_SIZE", strconv.Itoa(job.NumJobs))
 		req.Header.Add("K_JOB_ATTEMPT", strconv.Itoa(t.Attempts))
 
+		// Use the async HTTP header
+		req.Header.Add("Prefer", "respond-async")
+
 		for _, env := range job.Envs {
 			req.Header.Add("K_ENV", env)
 		}
@@ -93,8 +95,8 @@ func (t *Service) Run(isRestart bool) {
 		}
 
 		log.Printf("Calling:%s\n", url)
-		// res, err := (&http.Client{}).Do(req)
-		res, err := Proxy.Do(&http.Client{}, req)
+		res, err := (&http.Client{}).Do(req)
+		// res, err := Proxy.Do(&http.Client{}, req)
 
 		body := ""
 		sc := 0
