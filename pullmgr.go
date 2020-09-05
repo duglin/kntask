@@ -98,12 +98,11 @@ func main() {
 
 		// Normally we loop until we want to stop reading from Queue
 		for i := 0; i < 5; i++ {
-			str := fmt.Sprintf("Hello: %s\n", time.Now().Format(time.UnixDate))
+			str := fmt.Sprintf("{ cool CloudEvent #%d }\n", i+1)
 
 			var outBuf bytes.Buffer
 			var outWr io.Writer
 			var inRd io.Reader
-			var err error
 
 			inRd = bytes.NewReader([]byte(str))
 			outBuf = bytes.Buffer{}
@@ -121,17 +120,21 @@ func main() {
 			cmd.Stdin = inRd
 			cmd.Stdout = outWr
 			cmd.Stderr = outWr
-			err = cmd.Run()
+			// err := cmd.Run()
+			cmd.Run()
 			// 'err' is any possible error from trying to run the command
 
-			if err == nil { // Worked
-				fmt.Printf("Passed\n")
-			} else { // Command failed
-				fmt.Printf("Failed\n")
-			}
+			/*
+				if err == nil { // Worked
+					fmt.Printf("Passed\n")
+				} else { // Command failed
+					fmt.Printf("Failed\n")
+				}
+			*/
 
 			if outBuf.Len() > 0 {
-				log.Printf("Output:\n%s\n", string(outBuf.Bytes()))
+				// log.Printf("Output:\n%s\n", string(outBuf.Bytes()))
+				fmt.Printf("%s", outBuf.Bytes())
 			}
 
 			time.Sleep(1 * time.Second)

@@ -1,0 +1,8 @@
+#!/bin/bash
+
+echo "Hi from $0 !"
+
+# If we're streaming then just echo whatever comes across stdin, but reversed
+while read line ; do
+  echo "$line" | rev
+done

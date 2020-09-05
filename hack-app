@@ -1,0 +1,10 @@
+#!/bin/bash
+
+echo "Hi from $0 ! - Host: $(hostname)"
+echo Args: $*
+
+# skip -flags
+while [[ "$1" == "-"* ]]; do shift ; done
+
+# Pausing makes for better scaling demos ($1 sec, or default is 1)
+sleep ${SLEEP:-${1:-1}}

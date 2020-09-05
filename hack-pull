@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# Event pulling app so stdin is the event, just echo it
+echo -e "\nThe app read from stdin:"
+cat

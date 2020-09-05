@@ -72,15 +72,6 @@ func main() {
 			}
 		}
 
-		// Use the incoming URL "Path" as the args
-		for _, part := range strings.Split(r.URL.Path, "/") {
-			part, err := url.PathUnescape(part)
-			if part == "" || err != nil {
-				continue
-			}
-			taskCmd = append(taskCmd, part)
-		}
-
 		// Use the incoming URL "Query Params" as flags
 		for key, values := range r.URL.Query() {
 			for _, val := range values {
@@ -94,6 +85,15 @@ func main() {
 					taskCmd = append(taskCmd, fmt.Sprintf("--%s%s", key, val))
 				}
 			}
+		}
+
+		// Use the incoming URL "Path" as the args
+		for _, part := range strings.Split(r.URL.Path, "/") {
+			part, err := url.PathUnescape(part)
+			if part == "" || err != nil {
+				continue
+			}
+			taskCmd = append(taskCmd, part)
 		}
 
 		// Append any K_ARG_# env vars as args to the cmd line

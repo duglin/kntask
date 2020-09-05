@@ -15,7 +15,7 @@ import (
 var outputs []string
 var screenMUX sync.Mutex
 var flatList bool = false
-var timeout = 20
+var timeout = 30
 var numClients = 10
 var duration = 10
 
