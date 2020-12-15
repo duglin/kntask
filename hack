@@ -1,7 +1,7 @@
 source .demoscript
 
 kn service delete stream test stream pulltest hack-job >/dev/null 2>&1
-kn job delete --all
+kn job delete --all > /dev/null 2>&1
 
 comment We start with a simple app
 doit cat hack-app
@@ -83,5 +83,5 @@ doit --noexec klog hack-job
 kubectl logs --tail=99 -l serving.knative.dev/service=hack-job -c user-container
 
 comment --pause "Clean..."
-doit kn service delete test test2 pulltest stream
+doit kn service delete test pulltest stream hack-job
 doit kn job del --all

@@ -36,11 +36,10 @@ deploy: all
 	sleep 2
 	# kubectl apply -f proxy.yaml
 	# sleep 2
-	kn service create jobcontroller --image duglin/jobcontroller --min-scale=1
+	kn service create jobcontroller --image duglin/jobcontroller --scale=1
 	./prep
 	# kubectl create -f s.yaml > /dev/null 2>&1
-	kn service create test --image duglin/app --min-scale=1 \
-		--concurrency-limit=1 -l type=task
+	kn service create test --image duglin/app -l type=task
 	kn service delete test
 
 load: load.go

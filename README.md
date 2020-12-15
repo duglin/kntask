@@ -1,16 +1,42 @@
-Put kn-job into $HOME/.kn/plugins/
-
-Then use: `kn job ...` to do a batch job.
-
 To create a "task" add the label to your KnService - e.g.:
 ```
 kn service create test --image duglin/app -l type=task
 ```
 
+Put `kn-job` into `$HOME/.kn/plugins/`
+
+Then use: `kn job ...` to do a batch job.
+Make sure you start the job controller for batch jobs first:
+```
+kn service create jobcontroller --image duglin/jobcontroller --scale=1
+```
+Eventually this should be a real controller with a CRD.
+
+For a demo try: `./hack`.
+
+To send an async request, add the `Prefer:respond-async` header to your
+request:
+```
+curl -HPrefer:respond-async ...
+```
+You should get a 202 back right away but the request will still be processed
+by your service.
+
+
+For fun try:
+```
+$ kn service create bash --image ubuntu -l type=task
+$ curl http://bash... -d "echo hello world"
+hello world
+```
+
+
 When running one of the demos, just press any key to run the next command.
 
 KUBECONFIG env var must be set appropriately.
 `kubectl` must be available
+
+Notes for Doug:
 
 edit cm/config-autoscaler:
   target-burst-capacity: "0"

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 echo "Hi from $0 !"
 
@@ -7,6 +7,4 @@ test -n "$*" && echo  "Args: \"$*\""
 test -n "$K_JOB_INDEX" && echo "Index: $K_JOB_INDEX"
 
 # If we're streaming then just echo whatever comes across stdin, but reversed
-while read line ; do
-  echo "$line" | rev
-done
+cat | rev
