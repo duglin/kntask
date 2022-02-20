@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# 1: service-name
+# 2: func.js
+
+svc=$1
+file=$2
+shift ; shift
+
+curl cos.fun.cloud.ibm.com/app/app.js -XPUT --data-binary @$file
+kn service create $svc --image duglin/func-node $*

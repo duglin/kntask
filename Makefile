@@ -1,4 +1,5 @@
 export REPOSITORY ?= duglin
+export GO111MODULE=off
 
 all: .d-taskmgr .d-app .d-jobcontroller load kn-job client kn-exec
 
@@ -32,14 +33,17 @@ run: .d-app
 	docker run -ti -p 8080:8080 duglin/app
 
 deploy: all
-	kubectl delete ksvc --all > /dev/null 2>&1 || true
+	# kubectl delete ksvc --all > /dev/null 2>&1 || true
+	kubectl delete ksvc/jobcontroller > /dev/null 2>&1 || true
+	kubectl delete ksvc/test > /dev/null 2>&1 || true
 	sleep 2
 	# kubectl apply -f proxy.yaml
 	# sleep 2
 	kn service create jobcontroller --image duglin/jobcontroller --scale=1
-	./prep
-	# kubectl create -f s.yaml > /dev/null 2>&1
-	kn service create test --image duglin/app -l type=task
+	#./prep
+	# # kubectl create -f s.yaml > /dev/null 2>&1
+	kn service create test --image duglin/app -l type=task | tee out
+	curl -fs `tail -1 out` ; rm -f out
 	kn service delete test
 
 load: load.go

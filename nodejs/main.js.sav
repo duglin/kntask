@@ -1,0 +1,31 @@
+var { exec } = require('child_process');
+var http = require('http');
+
+var fs = require('fs');
+
+http.get("http://cos.fun.cloud.ibm.com/apps/app.js", function(response) {
+  console.log("before get");
+  response.pipe(fs.createWriteStream("/app/app.js")).on('end', () => {
+  	console.log("end");
+    var app = require('/app/app.js');
+    
+    const server = http.createServer((req, res) => {
+      let data = '';
+      req.on('data', chunk => {
+        data += chunk;
+      })
+      req.on('end', () => {
+  	  console.log("Req: " + req.method + " " + req.url);
+        // console.log("input: " + data);
+  	  // console.log(req);
+        data = app.handler(data);
+        // console.log("output: " + data);
+  	  res.write(data)
+        res.end();
+      })
+    })
+    
+    console.log("Listening on port 8080");
+    server.listen(8080);
+  });
+});

@@ -1,0 +1,23 @@
+#!/bin/bash
+
+URL=$1
+
+curl -q $URL
+echo
+
+export TIMEFORMAT="real: %R"
+
+echo "100 serially"
+time (
+for i in `seq 1 100` ; do
+  curl -s $URL > /dev/null
+done
+)
+
+echo "100 in parallel"
+time (
+for i in `seq 1 100` ; do
+  curl -s $URL > /dev/null &
+done
+wait
+)

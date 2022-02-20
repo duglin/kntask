@@ -1,6 +1,6 @@
 source .demoscript
 
-kn service delete stream test test2 pulltest >/dev/null 2>&1
+kn service delete stream test pulltest >/dev/null 2>&1
 kn job delete --all
 
 comment We start with a simple app
@@ -59,12 +59,13 @@ comment "Run as a job so we can ask for retries (in this case until it passes)"
 doit kn job create job1 -s pulltest -w --retry=-1
 doit kn job get job1
 
-doit kn service create stream --image duglin/app-echo -l type=task
+# doit kn service create stream --image duglin/app-echo -l type=task
+doit kn service create stream --image duglin/app -l type=task
 URL=$(tail -1 out)
 
 comment --pause "Demo streaming"
 doit --ignorerc timeout 10s ./client ${URL}
 
 comment --pause "Clean..."
-doit kn service delete test test2 pulltest stream
+doit kn service delete test pulltest stream
 doit kn job del --all

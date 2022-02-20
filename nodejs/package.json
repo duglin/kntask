@@ -1,0 +1,7 @@
+{
+  "name": "main",
+  "dependencies": {
+    "http": "*",
+    "fs": "*"
+  }
+}

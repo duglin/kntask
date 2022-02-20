@@ -1,12 +1,15 @@
 #!/bin/bash
 
+(
+
 # If we're streaming then just echo whatever comes across stdin, but reversed
 if [[ "$K_STREAM" == "true" ]]; then
   while read line ; do
     echo "$line" | rev
   done
-  echo exit streaming
-  echo "In '$0' (host:`hostname`) ${K_JOB_INDEX:+(Index:$K_JOB_INDEX) }args: $*"
+  # rev
+  echo exit streaming 
+  # echo "In '$0' (host:`hostname`) ${K_JOB_INDEX:+(Index:$K_JOB_INDEX) }args: $*"
   exit 0
 fi
 
@@ -30,3 +33,8 @@ sleep ${SLEEP:-1}
 if [[ -z "$PASS" ]] && [[ -n "$K_JOB_NAME" ]] && (( $RANDOM % 3 == 0 )) ; then
   exit 1
 fi
+
+echo Body is...
+cat
+
+) | tee /dev/fd/2

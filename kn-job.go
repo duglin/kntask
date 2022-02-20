@@ -31,7 +31,7 @@ var wait bool
 var args []string
 var all bool
 
-var host = "jobcontroller-default.kndev.us-south.containers.appdomain.cloud"
+var host = "jobcontroller-default.kndev2.us-south.containers.appdomain.cloud"
 
 func curl(url string, headers [][2]string) (string, error) {
 	client := &http.Client{}

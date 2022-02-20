@@ -1,10 +1,16 @@
 #!/bin/sh
 
+if [[ "$K_STREAM" == "true" ]]; then
+  cat | rev | tee /dev/fd/2
+fi
+
 echo "Hi from $0 !"
 
 # Show some info if we have any
 test -n "$*" && echo  "Args: \"$*\""
 test -n "$K_JOB_INDEX" && echo "Index: $K_JOB_INDEX"
 
+exit 0
+
 # If we're streaming then just echo whatever comes across stdin, but reversed
-cat | rev
+cat | rev | tee /dev/fd/2
